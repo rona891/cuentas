@@ -16,20 +16,49 @@ db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_cuota ON movements(plan_id,cuota_n
 // v1: los ajustes viejos pasan a ser ingresos; desde acá 'ajuste' = corrección de saldo
 if(!db.prepare('PRAGMA user_version').get().user_version)db.exec("UPDATE movements SET type='ingreso',category=CASE WHEN category='' THEN 'Sueldo' ELSE category END WHERE type='ajuste';PRAGMA user_version=1");
 if(!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='settings'").get())db.exec("ALTER TABLE users ADD COLUMN settings TEXT DEFAULT '{}'");
-const SET={lang:['es','en'],theme:['claro','oscuro','medianoche','crema']},getSet=uid=>{try{return JSON.parse(db.prepare('SELECT settings FROM users WHERE id=?').get(uid).settings||'{}')}catch{return{}}};
+const SET={lang:['es','en'],theme:['claro','oscuro','medianoche','crema'],totals:['ambos','separado','una']},getSet=uid=>{try{return JSON.parse(db.prepare('SELECT settings FROM users WHERE id=?').get(uid).settings||'{}')}catch{return{}}};
+// v2: monedas, billeteras y categorías propias de cada usuario; cajas con una o más monedas.
+// En movements: amount va en la moneda de wallet_id (o de goal_cur si no hay billetera); amount2 es el otro lado
+// cuando hay cambio de moneda (to_wallet_id en pases, goal_cur en aportes/retiros, goal_cur2 en 'cambio' dentro de una caja).
+db.exec(`CREATE TABLE IF NOT EXISTS currencies(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),code TEXT NOT NULL,name TEXT NOT NULL,symbol TEXT NOT NULL,rate REAL NOT NULL,base INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS wallets(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),name TEXT NOT NULL,currency_id INTEGER NOT NULL REFERENCES currencies(id),color TEXT DEFAULT '#2563EB',icon TEXT DEFAULT '👛',archived INTEGER DEFAULT 0,sort INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS categories(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),name TEXT NOT NULL,kind TEXT NOT NULL,color TEXT DEFAULT '#5B4FE0',icon TEXT DEFAULT '🏷️')`);
+const addCol=(t,c,d)=>{if(!db.prepare(`SELECT 1 FROM pragma_table_info('${t}') WHERE name=?`).get(c))db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${d}`)};
+[['movements','wallet_id','INTEGER'],['movements','to_wallet_id','INTEGER'],['movements','amount2','REAL'],['movements','goal_cur','INTEGER'],['movements','goal_cur2','INTEGER'],
+['goals','currency_id','INTEGER'],['goals','currencies',"TEXT DEFAULT ''"],['plans','wallet_id','INTEGER']].forEach(c=>addCol(...c));
+const PAL=['#5B4FE0','#0E9F6E','#E5484D','#2F7BEA','#D97706','#C026D3','#0891B2','#65A30D','#DB2777','#7C3AED'];
+const CATS={egreso:[['Comida','🍔'],['Transporte','🚌'],['Vivienda','🏠'],['Servicios','💡'],['Salud','💊'],['Ocio','🎉'],['Compras','🛍️'],['Cuotas','📆'],['Otros','📦']],ingreso:[['Sueldo','💼'],['Extra','✨'],['Otros ingresos','💰']]};
+function seed(uid,{cur,wal,cat}){let ars=null;
+if(cur)ars=db.prepare("INSERT INTO currencies(user_id,code,name,symbol,rate,base) VALUES(?,'ARS','Peso argentino','$',1,1)").run(uid).lastInsertRowid;
+if(wal){ars??=db.prepare('SELECT id FROM currencies WHERE user_id=? AND base=1').get(uid).id;const w=db.prepare('INSERT INTO wallets(user_id,name,currency_id,color,icon,sort) VALUES(?,?,?,?,?,?)');
+return{efectivo:w.run(uid,'Efectivo',ars,'#16A34A','💵',1).lastInsertRowid,virtual:w.run(uid,'Virtual',ars,'#2563EB','💳',2).lastInsertRowid,ars}}
+if(cat){const c=db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)');let i=0;for(const k in CATS)for(const[n,ic]of CATS[k])c.run(uid,n,k,PAL[i++%PAL.length],ic)}}
+const ensureCat=(uid,name,kind)=>{if(name&&['ingreso','egreso'].includes(kind)&&!db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(uid,kind,name)){
+const n=db.prepare('SELECT COUNT(*) n FROM categories WHERE user_id=?').get(uid).n;db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)').run(uid,name,kind,PAL[n%PAL.length],'🏷️')}};
+if(db.prepare('PRAGMA user_version').get().user_version<2){db.exec('BEGIN');try{for(const{id:u}of db.prepare('SELECT id FROM users').all()){
+const ids=seed(u,{cur:1,wal:1});seed(u,{cat:1});
+for(const w of['efectivo','virtual']){db.prepare('UPDATE movements SET wallet_id=? WHERE user_id=? AND wallet=? AND (goal_id IS NULL OR type<>?)').run(ids[w],u,w,'egreso');
+db.prepare("UPDATE movements SET to_wallet_id=? WHERE user_id=? AND type='transferencia' AND to_wallet=?").run(ids[w],u,w);db.prepare('UPDATE plans SET wallet_id=? WHERE user_id=? AND wallet=? AND goal_id IS NULL').run(ids[w],u,w)}
+db.prepare('UPDATE movements SET goal_cur=? WHERE user_id=? AND goal_id IS NOT NULL').run(ids.ars,u);db.prepare("UPDATE goals SET currency_id=?,currencies=? WHERE user_id=?").run(ids.ars,String(ids.ars),u);
+for(const r of db.prepare("SELECT DISTINCT type,category FROM movements WHERE user_id=? AND category<>'' AND type IN ('ingreso','egreso')").all(u))ensureCat(u,r.category,r.type)}
+db.exec('PRAGMA user_version=2;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+const own=(tbl,id,uid)=>id?db.prepare(`SELECT * FROM ${tbl} WHERE id=? AND user_id=?`).get(id,uid):null;
+const goalCurs=g=>String(g.currencies||g.currency_id).split(',').filter(Boolean).map(Number);
 const app=express();app.set('trust proxy',1);app.use(express.json(),cp());app.use(express.static('public'));
 const err=(res,c,m)=>res.status(c).json({error:m});
 const login=(res,u)=>res.cookie('tk',jwt.sign({uid:u.id},SECRET,{expiresIn:'30d'}),{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='1',maxAge:30*864e5}).json({username:u.username});
 const tries={};const limit=(req,res,next)=>{const k=req.ip,t=Date.now();tries[k]=(tries[k]||[]).filter(x=>t-x<9e5);if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos minutos');tries[k].push(t);next()};
 app.post('/api/register',limit,(req,res)=>{if(process.env.ALLOW_REGISTER==='0')return err(res,403,'Registro deshabilitado');
 const{username,password}=req.body;if(!/^[\w.-]{3,30}$/.test(username||'')||(password||'').length<8)return err(res,400,'Usuario (3-30 caracteres) y contraseña (mín. 8)');
-try{const r=db.prepare('INSERT INTO users(username,hash) VALUES(?,?)').run(username.toLowerCase(),bcrypt.hashSync(password,10));login(res,{id:r.lastInsertRowid,username})}catch{err(res,409,'Ese usuario ya existe')}});
+let r;try{r=db.prepare('INSERT INTO users(username,hash) VALUES(?,?)').run(username.toLowerCase(),bcrypt.hashSync(password,10))}catch{return err(res,409,'Ese usuario ya existe')}
+seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1});login(res,{id:r.lastInsertRowid,username})});
 app.post('/api/login',limit,(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(req.body.username||'').toLowerCase());
 if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash))return err(res,401,'Usuario o contraseña incorrectos');login(res,u)});
 app.post('/api/logout',(q,res)=>res.clearCookie('tk').json({}));
 app.use('/api',(req,res,next)=>{try{const p=jwt.verify(req.cookies.tk,SECRET);req.uid=p.uid;next()}catch{err(res,401,'No autenticado')}});
 app.get('/api/me',(req,res)=>res.json(db.prepare('SELECT username FROM users WHERE id=?').get(req.uid)));
 app.put('/api/settings',(req,res)=>{const s=getSet(req.uid);for(const[k,v]of Object.entries(req.body||{}))if(SET[k]&&SET[k].includes(v))s[k]=v;
+if(req.body&&req.body.tcur!==undefined&&own('currencies',+req.body.tcur,req.uid))s.tcur=+req.body.tcur;
 db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify(s),req.uid);res.json(s)});
 const checkPw=(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash)){err(res,401,'La contraseña actual no es correcta');return null}return u};
 app.put('/api/account',limit,(req,res)=>{const u=checkPw(req,res);if(!u)return;const b=req.body;
@@ -37,40 +66,98 @@ if(b.username!==undefined){const n=String(b.username).toLowerCase();if(!/^[\w.-]
 try{db.prepare('UPDATE users SET username=? WHERE id=?').run(n,u.id)}catch{return err(res,409,'Ese usuario ya existe')}}
 if(b.new_password!==undefined){if(String(b.new_password).length<8)return err(res,400,'La contraseña nueva debe tener al menos 8 caracteres');db.prepare('UPDATE users SET hash=? WHERE id=?').run(bcrypt.hashSync(String(b.new_password),10),u.id)}
 res.json(db.prepare('SELECT username FROM users WHERE id=?').get(u.id))});
-// Formatear: borra lo que el usuario elija. Borrar cajas arrastra sus movimientos y los planes que se pagan con ellas.
+// Formatear: borra lo que el usuario elija. Borrar cajas arrastra sus movimientos y los planes que se pagan con ellas;
+// billeteras y monedas vuelven a Efectivo y Virtual en pesos, y eso obliga a borrar también movimientos, cajas y cuotas.
 app.post('/api/reset',limit,(req,res)=>{const u=checkPw(req,res);if(!u)return;const w=new Set(Array.isArray(req.body.what)?req.body.what:[]),q=s=>db.prepare(s).run(u.id);
-if(!w.size)return err(res,400,'Elegí qué querés borrar');db.exec('BEGIN');try{
+if(!w.size)return err(res,400,'Elegí qué querés borrar');if(w.has('billeteras'))['movimientos','cajas','cuotas'].forEach(x=>w.add(x));db.exec('BEGIN');try{
 if(w.has('movimientos'))q('DELETE FROM movements WHERE user_id=?');
 if(w.has('cuotas'))q('DELETE FROM plans WHERE user_id=?');
 if(w.has('cajas')){q('DELETE FROM movements WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM plans WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM goals WHERE user_id=?')}
+if(w.has('billeteras')){q('DELETE FROM wallets WHERE user_id=?');q('DELETE FROM currencies WHERE user_id=?');seed(u.id,{cur:1,wal:1})}
+if(w.has('categorias')){q('DELETE FROM categories WHERE user_id=?');seed(u.id,{cat:1})}
 if(w.has('configuracion'))q("UPDATE users SET settings='{}' WHERE id=?");
 db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');return err(res,500,'No se pudo formatear')}res.json({})});
-app.get('/api/data',(req,res)=>res.json({username:db.prepare('SELECT username FROM users WHERE id=?').get(req.uid).username,settings:getSet(req.uid),movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(req.uid),goals:db.prepare('SELECT * FROM goals WHERE user_id=?').all(req.uid),plans:db.prepare('SELECT * FROM plans WHERE user_id=?').all(req.uid)}));
-app.post('/api/goals',(req,res)=>{const n=String(req.body.name||'').trim().slice(0,60);if(!n)return err(res,400,'Falta el nombre');
-db.prepare('INSERT INTO goals(user_id,name,target) VALUES(?,?,?)').run(req.uid,n,Math.max(0,+req.body.target||0));res.json({})});
+app.get('/api/data',(req,res)=>{const u=req.uid,all=t=>db.prepare(`SELECT * FROM ${t} WHERE user_id=?`).all(u);res.json({username:db.prepare('SELECT username FROM users WHERE id=?').get(u).username,settings:getSet(u),
+movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(u),goals:all('goals'),plans:all('plans'),currencies:db.prepare('SELECT * FROM currencies WHERE user_id=? ORDER BY base DESC,code').all(u),
+wallets:db.prepare('SELECT * FROM wallets WHERE user_id=? ORDER BY archived,sort,id').all(u),categories:db.prepare('SELECT * FROM categories WHERE user_id=? ORDER BY kind,name').all(u)})});
+
+// Monedas: rate = cuántos pesos (moneda base) vale 1 unidad
+const curData=(b,base)=>{const code=String(b.code||'').trim().toUpperCase(),name=String(b.name||'').trim().slice(0,30),symbol=String(b.symbol||'').replace(/[<>&"']/g,'').trim().slice(0,5),rate=+b.rate;
+return(!base&&!/^[A-Z0-9]{2,6}$/.test(code))||!name||!symbol||(!base&&!(rate>0))?null:{code,name,symbol,rate}};
+app.post('/api/currencies',(req,res)=>{const c=curData(req.body);if(!c)return err(res,400,'Revisá los datos de la moneda');
+if(db.prepare('SELECT 1 FROM currencies WHERE user_id=? AND code=?').get(req.uid,c.code))return err(res,409,'Ya tenés una moneda con ese código');
+res.json({id:db.prepare('INSERT INTO currencies(user_id,code,name,symbol,rate) VALUES(?,?,?,?,?)').run(req.uid,c.code,c.name,c.symbol,c.rate).lastInsertRowid})});
+app.put('/api/currencies/:id',(req,res)=>{const o=own('currencies',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa moneda');const c=curData(req.body,o.base);if(!c)return err(res,400,'Revisá los datos de la moneda');
+if(o.base)db.prepare('UPDATE currencies SET name=?,symbol=? WHERE id=?').run(c.name,c.symbol,o.id);
+else{if(db.prepare('SELECT 1 FROM currencies WHERE user_id=? AND code=? AND id<>?').get(req.uid,c.code,o.id))return err(res,409,'Ya tenés una moneda con ese código');
+db.prepare('UPDATE currencies SET code=?,name=?,symbol=?,rate=? WHERE id=?').run(c.code,c.name,c.symbol,c.rate,o.id)}res.json({})});
+app.delete('/api/currencies/:id',(req,res)=>{const o=own('currencies',+req.params.id,req.uid),u=req.uid;if(!o)return err(res,404,'No existe esa moneda');if(o.base)return err(res,400,'La moneda base no se puede borrar');
+if(db.prepare('SELECT 1 FROM wallets WHERE user_id=? AND currency_id=?').get(u,o.id)||db.prepare('SELECT 1 FROM goals WHERE user_id=? AND (currency_id=? OR (\',\'||currencies||\',\') LIKE ?)').get(u,o.id,'%,'+o.id+',%')
+||db.prepare('SELECT 1 FROM movements WHERE user_id=? AND (goal_cur=? OR goal_cur2=?)').get(u,o.id,o.id))return err(res,400,'Esa moneda está en uso en billeteras, cajas o movimientos');
+const s=getSet(u);if(s.tcur==o.id){delete s.tcur;db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify(s),u)}
+db.prepare('DELETE FROM currencies WHERE id=?').run(o.id);res.json({})});
+
+// Billeteras: con movimientos no se borran (se archivan) ni cambian de moneda
+const walUsed=(uid,id)=>db.prepare('SELECT 1 FROM movements WHERE user_id=? AND (wallet_id=? OR to_wallet_id=?)').get(uid,id,id)||db.prepare('SELECT 1 FROM plans WHERE user_id=? AND wallet_id=?').get(uid,id);
+const walData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,40);return name&&own('currencies',+b.currency_id,uid)?{name,currency_id:+b.currency_id,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#2563EB',icon:String(b.icon||'👛').replace(/[<>&"']/g,'').slice(0,8)||'👛'}:null};
+app.post('/api/wallets',(req,res)=>{const w=walData(req.body,req.uid);if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
+const s=db.prepare('SELECT COALESCE(MAX(sort),0)+1 s FROM wallets WHERE user_id=?').get(req.uid).s;
+res.json({id:db.prepare('INSERT INTO wallets(user_id,name,currency_id,color,icon,sort) VALUES(?,?,?,?,?,?)').run(req.uid,w.name,w.currency_id,w.color,w.icon,s).lastInsertRowid})});
+app.put('/api/wallets/:id',(req,res)=>{const o=own('wallets',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa billetera');const w=walData({...o,...req.body},req.uid);if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
+if(w.currency_id!==o.currency_id&&walUsed(req.uid,o.id))return err(res,400,'La billetera ya tiene movimientos: no se le puede cambiar la moneda');
+db.prepare('UPDATE wallets SET name=?,currency_id=?,color=?,icon=?,archived=? WHERE id=?').run(w.name,w.currency_id,w.color,w.icon,req.body.archived===undefined?o.archived:(req.body.archived?1:0),o.id);res.json({})});
+app.delete('/api/wallets/:id',(req,res)=>{const o=own('wallets',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa billetera');
+if(walUsed(req.uid,o.id))return err(res,400,'La billetera tiene movimientos o cuotas: archivala en lugar de borrarla');db.prepare('DELETE FROM wallets WHERE id=?').run(o.id);res.json({})});
+
+// Categorías: los movimientos guardan el nombre; renombrar actualiza los movimientos de ese tipo
+const catData=b=>{const name=String(b.name||'').trim().slice(0,40);return name&&['ingreso','egreso'].includes(b.kind)?{name,kind:b.kind,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#5B4FE0',icon:String(b.icon||'🏷️').replace(/[<>&"']/g,'').slice(0,8)||'🏷️'}:null};
+app.post('/api/categories',(req,res)=>{const c=catData(req.body);if(!c)return err(res,400,'Poné un nombre a la categoría');
+if(db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(req.uid,c.kind,c.name))return err(res,409,'Esa categoría ya existe');
+res.json({id:db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)').run(req.uid,c.name,c.kind,c.color,c.icon).lastInsertRowid})});
+app.put('/api/categories/:id',(req,res)=>{const o=own('categories',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa categoría');const c=catData({...req.body,kind:o.kind});if(!c)return err(res,400,'Poné un nombre a la categoría');
+if(c.name!==o.name&&db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(req.uid,o.kind,c.name))return err(res,409,'Esa categoría ya existe');
+db.exec('BEGIN');db.prepare('UPDATE categories SET name=?,color=?,icon=? WHERE id=?').run(c.name,c.color,c.icon,o.id);db.prepare('UPDATE movements SET category=? WHERE user_id=? AND type=? AND category=?').run(c.name,req.uid,o.kind,o.name);db.exec('COMMIT');res.json({})});
+app.delete('/api/categories/:id',(req,res)=>{db.prepare('DELETE FROM categories WHERE id=? AND user_id=?').run(+req.params.id,req.uid);res.json({})});
+
+// Cajas: moneda principal (meta y total) + monedas habilitadas
+const goalData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,60),cur=+b.currency_id,cs=[...new Set([cur,...(Array.isArray(b.currencies)?b.currencies.map(Number):[])])];
+return name&&cs.every(c=>own('currencies',c,uid))?{name,target:Math.max(0,+b.target||0),cur,cs:cs.join(',')}:null};
+const goalBal=(uid,gid,cur,skip)=>db.prepare("SELECT COALESCE(SUM(CASE WHEN type='ahorro' AND goal_cur=? THEN COALESCE(amount2,amount) WHEN type IN ('egreso','cambio') AND goal_cur=? THEN -amount WHEN type='cambio' AND goal_cur2=? THEN amount2 ELSE 0 END),0) t FROM movements WHERE user_id=? AND goal_id=? AND id<>?").get(cur,cur,cur,uid,gid,skip||0).t;
+app.post('/api/goals',(req,res)=>{const g=goalData(req.body,req.uid);if(!g)return err(res,400,'Poné un nombre y elegí la moneda');
+db.prepare('INSERT INTO goals(user_id,name,target,currency_id,currencies) VALUES(?,?,?,?,?)').run(req.uid,g.name,g.target,g.cur,g.cs);res.json({})});
 app.delete('/api/goals/:id',(req,res)=>{if(db.prepare('SELECT 1 FROM plans WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta está asociada a un plan de cuotas');if(db.prepare('SELECT 1 FROM movements WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta tiene aportes; borralos primero');
 db.prepare('DELETE FROM goals WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
-app.put('/api/goals/:id',(req,res)=>{const n=String(req.body.name||'').trim().slice(0,60);if(!n)return err(res,400,'Falta el nombre');
-const r=db.prepare('UPDATE goals SET name=?,target=? WHERE id=? AND user_id=?').run(n,Math.max(0,+req.body.target||0),req.params.id,req.uid);r.changes?res.json({}):err(res,404,'No existe esa caja')});
-const goalBal=(uid,gid,skip)=>db.prepare("SELECT COALESCE(SUM(CASE WHEN type='ahorro' THEN amount WHEN type='egreso' THEN -amount ELSE 0 END),0) t FROM movements WHERE user_id=? AND goal_id=? AND id<>?").get(uid,gid,skip||0).t;
+app.put('/api/goals/:id',(req,res)=>{const o=own('goals',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa caja');const g=goalData(req.body,req.uid);if(!g)return err(res,400,'Poné un nombre y elegí la moneda');
+const keep=g.cs.split(',').map(Number);for(const c of goalCurs(o))if(!keep.includes(c)&&(Math.abs(goalBal(req.uid,o.id,c))>0.005||db.prepare('SELECT 1 FROM movements WHERE goal_id=? AND (goal_cur=? OR goal_cur2=?)').get(o.id,c,c)))
+return err(res,400,'No podés quitar una moneda que la caja ya usó; pasá ese saldo a otra moneda y dejala habilitada');
+db.prepare('UPDATE goals SET name=?,target=?,currency_id=?,currencies=? WHERE id=?').run(g.name,g.target,g.cur,g.cs,o.id);res.json({})});
 app.post('/api/movements',(req,res)=>saveMv(req,res));
 app.put('/api/movements/:id',(req,res)=>saveMv(req,res,+req.params.id));
-function saveMv(req,res,id){const b=req.body,a=+b.amount,W=['efectivo','virtual'],cj=b.type==='egreso'&&b.goal_id;
-if(!['ingreso','egreso','ahorro','transferencia','ajuste'].includes(b.type)||!/^\d{4}-\d\d-\d\d$/.test(b.date)||!isFinite(a)||a===0||(!cj&&!W.includes(b.wallet)))return err(res,400,'Datos inválidos');
-if(b.type==='transferencia'&&(!W.includes(b.to_wallet)||b.to_wallet===b.wallet))return err(res,400,'Elegí dos billeteras distintas');
-if(a<0&&b.type!=='ahorro'&&b.type!=='ajuste')return err(res,400,'El monto debe ser positivo');
-let g=null;if(b.type==='ahorro'||cj){g=db.prepare('SELECT id FROM goals WHERE id=? AND user_id=?').get(b.goal_id,req.uid);if(!g)return err(res,400,'Elegí una caja de ahorro');}
-const old=id?db.prepare('SELECT * FROM movements WHERE id=? AND user_id=?').get(id,req.uid):null;if(id&&!old)return err(res,404,'No existe ese movimiento');
-if(b.type==='ahorro'&&a<0){const t=goalBal(req.uid,g.id,id);if(t+a<-0.005)return err(res,400,'La caja tiene $'+Math.round(t).toLocaleString('es-AR')+', no podés retirar más que eso')}
-const v=[b.date,b.type,a,String(b.category||'').slice(0,40),String(b.detail||'').slice(0,120),String(b.importance||'').slice(0,20),cj?'':b.wallet,b.type==='transferencia'?b.to_wallet:'',g&&g.id,cj&&b.dec_target?1:0];
-try{if(old)db.prepare('UPDATE movements SET date=?,type=?,amount=?,category=?,detail=?,importance=?,wallet=?,to_wallet=?,goal_id=?,dec_target=? WHERE id=? AND user_id=?').run(...v,id,req.uid);
-else{const pl=b.plan_id?db.prepare('SELECT id FROM plans WHERE id=? AND user_id=?').get(b.plan_id,req.uid):null;
-db.prepare('INSERT INTO movements(date,type,amount,category,detail,importance,wallet,to_wallet,goal_id,dec_target,user_id,plan_id,cuota_n) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...v,req.uid,pl?pl.id:null,pl?(+b.cuota_n||null):null)}
+function saveMv(req,res,id){const b=req.body,u=req.uid,T=b.type,a=+b.amount,cj=T==='egreso'&&b.goal_id;
+if(!['ingreso','egreso','ahorro','transferencia','ajuste','cambio'].includes(T)||!/^\d{4}-\d\d-\d\d$/.test(b.date)||!isFinite(a)||a===0)return err(res,400,'Datos inválidos');
+if(a<0&&T!=='ahorro'&&T!=='ajuste')return err(res,400,'El monto debe ser positivo');
+const old=id?own('movements',id,u):null;if(id&&!old)return err(res,404,'No existe ese movimiento');
+const other=()=>{const v=+b.amount2;return isFinite(v)&&v!==0&&Math.sign(v)===Math.sign(a)?v:NaN};let w=null,w2=null,g=null,gc=null,gc2=null,a2=null;
+if(T!=='cambio'&&!cj){w=own('wallets',+b.wallet_id,u);if(!w)return err(res,400,'Elegí una billetera')}
+if(T==='transferencia'){w2=own('wallets',+b.to_wallet_id,u);if(!w2||w2.id===w.id)return err(res,400,'Elegí dos billeteras distintas');
+if(w2.currency_id!==w.currency_id&&isNaN(a2=other()))return err(res,400,'Indicá cuánto recibís en la otra moneda')}
+if(T==='ahorro'||cj||T==='cambio'){g=own('goals',+b.goal_id,u);if(!g)return err(res,400,'Elegí una caja de ahorro');const cs=goalCurs(g);
+gc=+b.goal_cur||g.currency_id;if(!cs.includes(gc))return err(res,400,'Esa moneda no está habilitada en la caja');
+if(T==='ahorro'&&gc!==w.currency_id&&isNaN(a2=other()))return err(res,400,'Indicá el monto en la moneda de la caja');
+if(T==='cambio'){gc2=+b.goal_cur2;if(!cs.includes(gc2)||gc2===gc)return err(res,400,'Elegí dos monedas distintas de la caja');if(isNaN(a2=other()))return err(res,400,'Indicá cuánto recibís en la otra moneda')}}
+// Lo que sale de la caja (retiro o cambio de moneda) no puede dejarla en negativo en esa moneda
+const out=T==='ahorro'&&a<0?-(a2??a):T==='cambio'?a:0;
+if(out>0&&goalBal(u,g.id,gc,id)-out<-0.005)return err(res,400,'La caja no tiene saldo suficiente en esa moneda');
+const cat=String(b.category||'').trim().slice(0,40);ensureCat(u,cat,T);
+const v=[b.date,T,a,a2,cat,String(b.detail||'').slice(0,120),String(b.importance||'').slice(0,20),w&&w.id,w2&&w2.id,g&&g.id,gc,gc2,cj&&b.dec_target?1:0];
+try{if(old)db.prepare('UPDATE movements SET date=?,type=?,amount=?,amount2=?,category=?,detail=?,importance=?,wallet_id=?,to_wallet_id=?,goal_id=?,goal_cur=?,goal_cur2=?,dec_target=? WHERE id=? AND user_id=?').run(...v,id,u);
+else{const pl=b.plan_id?own('plans',+b.plan_id,u):null;
+db.prepare('INSERT INTO movements(date,type,amount,amount2,category,detail,importance,wallet_id,to_wallet_id,goal_id,goal_cur,goal_cur2,dec_target,user_id,plan_id,cuota_n) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...v,u,pl?pl.id:null,pl?(+b.cuota_n||null):null)}
 res.json({})}catch(e){err(res,409,'Cuota ya registrada')}}
-app.post('/api/plans',(req,res)=>{const b=req.body,W=['efectivo','virtual'],n=String(b.name||'').trim().slice(0,60),a=+b.amount,t=+b.total,sk=+b.skip||0,ev=+b.every||0;
-if(!n||!(a>0)||!Number.isInteger(t)||t<1||t>600||!Number.isInteger(sk)||sk<0||sk>=t||!/^\d{4}-\d\d-\d\d$/.test(b.start)||!['mensual','semanal','dias'].includes(b.freq)||(b.freq==='dias'&&!(ev>=1&&ev<=365))||(!b.goal_id&&!W.includes(b.wallet)))return err(res,400,'Revisá los datos del plan');
-if(b.goal_id&&!db.prepare('SELECT 1 FROM goals WHERE id=? AND user_id=?').get(b.goal_id,req.uid))return err(res,400,'Caja de ahorro inválida');
-db.prepare('INSERT INTO plans(user_id,name,amount,total,skip,start,freq,every,wallet,goal_id,dec_target) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(req.uid,n,a,t,sk,b.start,b.freq,ev,b.goal_id?'':b.wallet,b.goal_id?+b.goal_id:null,b.goal_id&&b.dec_target?1:0);res.json({})});
+app.post('/api/plans',(req,res)=>{const b=req.body,n=String(b.name||'').trim().slice(0,60),a=+b.amount,t=+b.total,sk=+b.skip||0,ev=+b.every||0;
+if(!n||!(a>0)||!Number.isInteger(t)||t<1||t>600||!Number.isInteger(sk)||sk<0||sk>=t||!/^\d{4}-\d\d-\d\d$/.test(b.start)||!['mensual','semanal','dias'].includes(b.freq)||(b.freq==='dias'&&!(ev>=1&&ev<=365))||(!b.goal_id&&!own('wallets',+b.wallet_id,req.uid)))return err(res,400,'Revisá los datos del plan');
+if(b.goal_id&&!own('goals',+b.goal_id,req.uid))return err(res,400,'Caja de ahorro inválida');
+db.prepare("INSERT INTO plans(user_id,name,amount,total,skip,start,freq,every,wallet,wallet_id,goal_id,dec_target) VALUES(?,?,?,?,?,?,?,?,'',?,?,?)").run(req.uid,n,a,t,sk,b.start,b.freq,ev,b.goal_id?null:+b.wallet_id,b.goal_id?+b.goal_id:null,b.goal_id&&b.dec_target?1:0);res.json({})});
 app.delete('/api/plans/:id',(req,res)=>{db.prepare('DELETE FROM plans WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
 app.delete('/api/movements/:id',(req,res)=>{db.prepare('DELETE FROM movements WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
 app.listen(process.env.PORT||3000,()=>console.log('Cuentas en puerto '+(process.env.PORT||3000)));
