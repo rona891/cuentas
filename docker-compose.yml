@@ -1,0 +1,12 @@
+services:
+  cuentas:
+    build: .
+    container_name: cuentas
+    restart: unless-stopped
+    environment:
+      - COOKIE_SECURE=1
+      - ALLOW_REGISTER=0
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8090:3000"
