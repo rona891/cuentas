@@ -7,7 +7,7 @@ let L=store('lang')||'es';
 const t=(s,...a)=>{let r=(L=='en'&&EN[s])||s;a.forEach((v,i)=>r=r.split('{'+i+'}').join(v));return r};
 const LOC=()=>L=='en'?'en-US':'es-AR',fdate=(s,o)=>D(s).toLocaleDateString(LOC(),o);
 const api=async(p,m='GET',b)=>{const r=await fetch('/api/'+p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(t(j.error||'Error')),{st:r.status});return j};
-let S={f:{types:[],min:'',max:'',wallet:'',q:'',all:false},view:'res',movs:[],goals:[],plans:[],currencies:[],wallets:[],categories:[],settings:{},username:'',from:'',to:'',week:wk(today()),goal:null,reg:false};
+let S={f:{types:[],min:'',max:'',wallet:'',q:'',all:false},view:'res',movs:[],goals:[],plans:[],currencies:[],wallets:[],categories:[],priorities:[],settings:{},username:'',from:'',to:'',week:wk(today()),goal:null,reg:false};
 
 // Monedas: rate = cuántos pesos (moneda base) vale 1 unidad. money() formatea en la moneda indicada (por defecto, la base).
 const BASE=()=>S.currencies.find(c=>c.base)||{id:0,code:'ARS',symbol:'$',rate:1,base:1,name:'Peso argentino'};
@@ -29,9 +29,10 @@ function toast(m){const d=document.createElement('div');d.className='toast';d.te
 // Tipos de movimiento, categorías y utilidades de presentación
 const TL={ingreso:'Ingreso',egreso:'Gasto',ahorro:'Ahorro',retiro:'Retiro',transferencia:'Pase',ajuste:'Corrección',cambio:'Cambio de moneda'},tl=k=>t(TL[k]);
 const TI={ingreso:'💵',egreso:'🧾',ahorro:'🐷',retiro:'↩️',transferencia:'⇄',ajuste:'✎',cambio:'💱'},TC={ingreso:'var(--in)',egreso:'var(--out)',ahorro:'var(--sv)',retiro:'var(--sv)',transferencia:'var(--tr)',ajuste:'var(--aj)',cambio:'var(--tr)'};
-const IMP={Esencial:'var(--out)',Necesario:'var(--tr)',Prescindible:'var(--sv)'},PAL=['#5B4FE0','#0E9F6E','#E5484D','#2F7BEA','#D97706','#C026D3','#0891B2','#65A30D','#DB2777','#7C3AED'];
+const PAL=['#5B4FE0','#0E9F6E','#E5484D','#2F7BEA','#D97706','#C026D3','#0891B2','#65A30D','#DB2777','#7C3AED'];
 const ICONS=['💵','💳','🏦','📱','👛','💰','🪙','💶','💷','💴','🐷','🍔','🛒','🚌','🚗','🏠','💡','💊','🎉','🛍️','📆','📦','💼','✨','🎁','✈️','🎓','🐶','👕','⚽','🎮','📚','🍺','☕','🏷️'];
 const isImg=v=>typeof v=='string'&&v.startsWith('data:image/png;base64,'),icoH=v=>isImg(v)?`<img class="cico" src="${v}" alt="">`:esc(v),icoT=v=>isImg(v)?'▫️':v;
+const PRX=n=>(S.priorities||[]).find(p=>p.name==n),prH=n=>{const p=PRX(n);return(p?icoH(p.icon)+' ':'')+esc(t(n))};
 const CATX=n=>S.categories.find(c=>c.name==n),catH=n=>{const c=CATX(n);return(c?icoH(c.icon)+' ':'')+esc(t(n))};
 const WN=id=>{const w=WAL(id);return w?w.name:''},wIc=id=>icoH((WAL(id)||{}).icon||'👛'),wCol=id=>(WAL(id)||{}).color||'var(--aj)';
 const sum=(a,k)=>a.filter(x=>x.type==k).reduce((s,x)=>s+vT(x),0);
@@ -42,7 +43,7 @@ const empty=(ic,m)=>`<div class="empty"><b>${ic}</b>${m}</div>`;
 const picker=(name,opts,val,fn,extra='')=>`<input type="hidden" name="${name}" value="${esc(val)}"><div class="pick" data-for="${name}">${opts.map(o=>`<button type="button" data-v="${esc(o)}" class="${o==val?'on':''}">${fn(o)}</button>`).join('')}${extra}</div>`;
 document.addEventListener('click',e=>{const b=e.target.closest('.pick button');if(!b)return;const p=b.parentNode;p.querySelectorAll('button,.cpick').forEach(x=>x.classList.toggle('on',x==b));p.previousElementSibling.value=b.dataset.v});
 // Ícono: emojis + imágenes ya subidas + ＋ para subir un .ico/imagen (se achica a 64×64 PNG antes de guardarla)
-const iconPick=val=>{const opts=[...new Set([...ICONS,...S.wallets.map(w=>w.icon),...S.categories.map(c=>c.icon)].filter(v=>ICONS.includes(v)||isImg(v)).concat(val?[val]:[]))];
+const iconPick=val=>{const opts=[...new Set([...ICONS,...S.wallets.map(w=>w.icon),...S.categories.map(c=>c.icon),...(S.priorities||[]).map(p=>p.icon)].filter(v=>ICONS.includes(v)||isImg(v)).concat(val?[val]:[]))];
 return picker('icon',opts,val,icoH,`<label class="padd" title="${t('Subir ícono (.ico o imagen)')}">＋<input type="file" accept=".ico,image/x-icon,image/png,image/jpeg,image/webp,image/gif" onchange="upIcon(this)" hidden></label>`)};
 function upIcon(inp){const f=inp.files[0];inp.value='';if(!f)return;if(f.size>1e6)return toast(t('La imagen es muy grande (máx. 1 MB)'));const r=new FileReader();
 r.onload=()=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),k=Math.min(64/im.width,64/im.height),w=im.width*k,h=im.height*k;
@@ -79,7 +80,7 @@ $('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div styl
 <div class="seg" style="max-width:200px;margin:12px auto">${[['es','Español'],['en','English']].map(([k,n])=>`<button type="button" class="${L==k?'on':''}" onclick="setLang('${k}');loginView()">${n}</button>`).join('')}</div>`}
 async function auth(e){e.preventDefault();const f=e.target;try{await api(S.reg?'register':'login','POST',{username:f.u.value,password:f.p.value});load()}catch(x){$('#e').textContent=x.message}}
 async function logout(){await api('logout','POST').catch(()=>{});menu(0);Object.assign(S,{movs:[],goals:[],plans:[],view:'res',goal:null});loginView()}
-const MAIN=[['res','Resumen','📊'],['sem','Semanas','🗓️'],['aho','Ahorros','🐷'],['cuo','Cuotas','📆']],MENU=[['bil','Billeteras','👛'],['mon','Monedas','💱'],['cat','Categorías','🏷️'],['cfg','Configuración','⚙️'],['cta','Cuenta','👤']];
+const MAIN=[['res','Resumen','📊'],['sem','Semanas','🗓️'],['aho','Ahorros','🐷'],['cuo','Cuotas','📆']],MENU=[['bil','Billeteras','👛'],['mon','Monedas','💱'],['cat','Categorías','🏷️'],['pri','Prioridades','🚦'],['cfg','Configuración','⚙️'],['cta','Cuenta','👤']];
 function go(v){S.view=v;S.goal=null;menu(0);render()}
 function menu(o){$('#side').classList.toggle('open',!!o);const s=$('#scrim');if(o&&!s){const d=document.createElement('div');d.id='scrim';d.onclick=()=>menu(0);document.body.appendChild(d)}else if(!o&&s)s.remove()}
 // PC: el panel se puede esconder; escondido, ☰ lo muestra flotando al pasar el mouse y con clic lo vuelve a fijar
@@ -91,7 +92,7 @@ const col=document.body.classList.contains('collapsed');
 return`<button class="pin" onclick="setCol(${!col})" title="${col?t('Fijar menú'):t('Ocultar menú')}" aria-label="${col?t('Fijar menú'):t('Ocultar menú')}">${col?'»':'«'}</button><div class="brand">💸 FNz</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
 <div class="sec main-only">${t('Principal')}</div>${MAIN.map(it('main-only')).join('')}<div class="sec">${t('Menú')}</div>${MENU.map(it('')).join('')}
 <div style="flex:1"></div><button class="it" onclick="logout()"><span>🚪</span>${t('Cerrar sesión')}</button>`}
-const VIEWS={res:()=>resumen(),sem:()=>semana(),cuo:()=>cuotas(),bil:()=>billeteras(),mon:()=>monedas(),cat:()=>categorias(),cfg:()=>config(),cta:()=>cuenta(),aho:()=>S.goal?meta():ahorros()};
+const VIEWS={res:()=>resumen(),sem:()=>semana(),cuo:()=>cuotas(),bil:()=>billeteras(),mon:()=>monedas(),cat:()=>categorias(),pri:()=>prioridades(),cfg:()=>config(),cta:()=>cuenta(),aho:()=>S.goal?meta():ahorros()};
 function render(keep){const v=S.view;
 $('#top').innerHTML=`<button class="burger" onclick="menu(1)" aria-label="${t('Menú')}">☰</button><span class="brand">${t((MAIN.concat(MENU).find(x=>x[0]==v)||MAIN[0])[1])}</span>`;
 $('#bnav').innerHTML=MAIN.map(([k,n,i])=>`<button class="${v==k?'on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`).join('')+`<button class="add" onclick="openForm()"><span>＋</span>${t('Cargar')}</button>`;
@@ -126,7 +127,7 @@ return`<div class="row"><h1>${t('Resumen')}</h1><button class="l lk" onclick="op
 ${kpi('Ahorrado','Lo que aportaste a tus cajas en el período, menos lo que retiraste.',mo(aho),'var(--sv)')}${kpi('Tasa de ahorro','Porcentaje de tus ingresos que fue a ahorro.',(ing?Math.round(aho/ing*100):0)+'%','var(--acc)')}
 ${kpi('Gasto diario prom.','Gastos del período divididos por los días transcurridos.',mo(egr/dias),'var(--tr)')}${kpi('vs. período anterior','Cuánto más o menos gastaste que en el período de igual duración inmediatamente anterior. Elegí desde y hasta para verlo.',pe?(egr>pe?'+':'')+Math.round((egr-pe)/pe*100)+'%':'—','var(--aj)')}</div>
 ${byd?`<p class="mut">${t('Día en que más gastás:')} <b>${byd[0]}</b></p>`:''}
-<div class="cols"><div><h2>${t('Gastos por categoría')}</h2><div class="card">${bars(grp(E,'category'),(k,i)=>(CATX(k)||{}).color||PAL[i%PAL.length],catH)}</div><h2>${t('Gastos por importancia')}</h2><div class="card">${bars(grp(E.map(m=>({...m,importance:m.importance&&t(m.importance)})),'importance'),k=>IMP[Object.keys(IMP).find(i=>t(i)==k)]||'var(--aj)')}</div>
+<div class="cols"><div><h2>${t('Gastos por categoría')}</h2><div class="card">${bars(grp(E,'category'),(k,i)=>(CATX(k)||{}).color||PAL[i%PAL.length],catH)}</div><h2>${t('Gastos por prioridad')}</h2><div class="card">${bars(grp(E,'importance'),k=>(PRX(k)||{}).color||'var(--aj)',prH)}</div>
 <h2>${t('Gastos por billetera')}</h2><div class="card">${bars(grp(E.map(m=>({...m,w:m.wallet_id?m.wallet_id:'c'})),'w'),k=>k=='c'?'var(--sv)':wCol(k),k=>k=='c'?'🐷 '+t('Caja de ahorro'):wIc(k)+' '+esc(WN(k)))}</div></div>
 <div><h2>${t('Últimos movimientos')}</h2><div class="card">${M.slice(0,8).map(mvRow).join('')||empty('🗒️',t('Todavía no hay movimientos en este período.'))}</div>${M.length>8?`<button class="l lk" onclick="S.f.all=true;go('sem')">${t('Ver todos los movimientos')} →</button>`:''}</div></div>`}
 function corr(id){const w=WAL(id),cur=bal(id,today());sheet(`<h2>${t('Corregir saldo de {0}',esc(w.name))}</h2><p class="mut">${t('Hoy la app dice {0}. Poné cuánto tenés realmente y se registra la diferencia, sin contar como ingreso ni gasto.',money(cur,w.currency_id))}</p>
@@ -145,7 +146,7 @@ function edit(id){const x=S.movs.find(x=>x.id==id);if(x)openForm(null,null,x)}
 function mvRow(x){const g=S.goals.find(g=>g.id==x.goal_id),ret=x.type=='ahorro'&&x.amount<0,k=ret?'retiro':x.type,inCaja=S.view=='aho'&&S.goal,gc=x.goal_cur||(g&&g.currency_id);
 const sg=x.type=='transferencia'||x.type=='cambio'?'':inCaja?(x.type=='ahorro'&&x.amount>0?'+':'−'):(x.type=='ingreso'||(x.type=='ajuste'&&x.amount>0)||ret)?'+':'−';
 const gn=g?'🐷 '+esc(g.name):'',wn=x.wallet_id?wIc(x.wallet_id)+' '+esc(WN(x.wallet_id)):'';
-const tags=x.type=='cambio'?[gn,CUR(x.goal_cur).code+' → '+CUR(x.goal_cur2).code]:g?(x.type=='egreso'?[t('desde {0}',gn)]:ret?[gn,'→ '+wn]:[wn,'→ '+gn]):[x.type=='transferencia'?wn+' → '+wIc(x.to_wallet_id)+' '+esc(WN(x.to_wallet_id)):wn,x.category&&catH(x.category),x.importance&&esc(t(x.importance))];
+const tags=x.type=='cambio'?[gn,CUR(x.goal_cur).code+' → '+CUR(x.goal_cur2).code]:g?(x.type=='egreso'?[t('desde {0}',gn)]:ret?[gn,'→ '+wn]:[wn,'→ '+gn]):[x.type=='transferencia'?wn+' → '+wIc(x.to_wallet_id)+' '+esc(WN(x.to_wallet_id)):wn,x.category&&catH(x.category),x.importance&&prH(x.importance)];
 // Con cambio de moneda se muestran los dos lados: lo que sale y lo que entra
 const c2=x.type=='transferencia'?wcur(x.to_wallet_id):x.type=='cambio'?x.goal_cur2:x.type=='ahorro'?gc:null,two=x.amount2!=null&&c2;
 const main=ret&&two?money(Math.abs(x.amount2),gc)+' → '+money(Math.abs(x.amount),mcur(x)):money(Math.abs(x.amount),mcur(x))+(two?' → '+money(Math.abs(x.amount2),c2):'');
@@ -215,6 +216,29 @@ let[i,...d]=v.replace(new RegExp('[^0-9'+reEsc(dc)+']','g'),'').split(dc);i=i.re
 const out=!i&&!hasD?(neg?'-':''):(neg?'-':'')+sym+(i||'0').replace(/\B(?=(\d{3})+(?!\d))/g,th)+(hasD?dc+d.join('').slice(0,dec):'');
 el.value=out;el._raw=out;if(document.activeElement!==el)return;let p=out.length;if(!atEnd){p=0;let c=0;while(p<out.length&&c<k){if(/\d/.test(out[p]))c++;p++}}el.setSelectionRange(p,p)}
 document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('money'))mask(e.target)},true);
+// Selector propio (categoría, "se paga con"): tocar abre la lista y se elige a mano; mantener apretado y deslizar
+// resalta la opción que queda bajo el dedo/mouse y al soltar la elige. El valor va en un <input hidden> que dispara 'change'.
+const csel=(name,opts,val,ph,none)=>{const cur=opts.find(o=>String(o.v)==String(val));return`<div class="csw"><input type="hidden" name="${name}" value="${esc(cur?cur.v:'')}"><button type="button" class="csel"><span class="csv">${cur?cur.h:`<span class="mut">${esc(ph)}</span>`}</span><span class="chev">▾</span></button>
+<template>${opts.map(o=>`<div class="ci" data-v="${esc(o.v)}">${o.h}</div>`).join('')||`<div class="empty">${esc(none||ph)}</div>`}</template></div>`};
+const catOpts=(k,keep)=>{const o=S.categories.filter(c=>c.kind==k).map(c=>({v:c.name,h:`<i class="cdot" style="background:${c.color}"></i><span class="cic">${icoH(c.icon)}</span>${esc(t(c.name))}`}));
+if(keep&&!o.some(x=>x.v==keep))o.push({v:keep,h:`<i class="cdot"></i><span class="cic">🏷️</span>${esc(t(keep))}`});return o};
+let CP=null;
+function cselOpen(btn){cselClose();const w=btn.parentNode,cur=w.querySelector('input').value,p=document.createElement('div');p.className='catpop';p.append(w.querySelector('template').content.cloneNode(true));
+p.querySelectorAll('.ci').forEach(x=>x.classList.toggle('on',x.dataset.v==cur));document.body.appendChild(p);
+const r=btn.getBoundingClientRect(),h=Math.min(p.scrollHeight,innerHeight*.55),below=innerHeight-r.bottom>h+8||r.top<h+8;
+Object.assign(p.style,{left:r.left+'px',width:r.width+'px',maxHeight:h+'px',top:(below?r.bottom+4:r.top-h-4)+'px'});const on=p.querySelector('.on');if(on)on.scrollIntoView({block:'nearest'});
+CP={btn,w,p};btn.classList.add('open')}
+function cselClose(){if(CP){CP.p.remove();CP.btn.classList.remove('open');CP=null}}
+function cselPick(it){const{w,btn}=CP,i=w.querySelector('input');i.value=it.dataset.v;btn.querySelector('.csv').innerHTML=it.innerHTML;cselClose();i.dispatchEvent(new Event('change',{bubbles:true}))}
+const ciAt=e=>{const x=document.elementFromPoint(e.clientX,e.clientY);return x&&x.closest('.catpop .ci')};
+document.addEventListener('pointerdown',e=>{const b=e.target.closest('.csel');if(b){e.preventDefault();if(CP&&CP.btn==b)return cselClose();cselOpen(b);CP.drag={x:e.clientX,y:e.clientY,moved:false,id:e.pointerId};b.setPointerCapture(e.pointerId);return}
+if(CP&&!e.target.closest('.catpop'))cselClose()});
+document.addEventListener('pointermove',e=>{const d=CP&&CP.drag;if(!d||e.pointerId!=d.id)return;if(!d.moved&&Math.hypot(e.clientX-d.x,e.clientY-d.y)<6)return;d.moved=true;
+const r=CP.p.getBoundingClientRect();if(e.clientY<r.top+28)CP.p.scrollTop-=14;else if(e.clientY>r.bottom-28)CP.p.scrollTop+=14;const it=ciAt(e);CP.p.querySelectorAll('.ci').forEach(x=>x.classList.toggle('hl',x==it))});
+document.addEventListener('pointerup',e=>{const d=CP&&CP.drag;if(!d||e.pointerId!=d.id)return;CP.drag=null;if(!d.moved)return;const it=ciAt(e);if(it)cselPick(it);else CP.p.querySelectorAll('.hl').forEach(x=>x.classList.remove('hl'))});
+document.addEventListener('click',e=>{const it=e.target.closest('.catpop .ci');if(it&&CP)cselPick(it)});
+document.addEventListener('keydown',e=>{const b=e.target.closest&&e.target.closest('.csel');if(b&&(e.key=='Enter'||e.key==' '||e.key=='ArrowDown')){e.preventDefault();cselOpen(b)}else if(CP&&e.key=='Escape')cselClose()});
+addEventListener('scroll',e=>{if(CP&&!CP.drag&&e.target!==CP.p)cselClose()},true);addEventListener('resize',()=>cselClose());
 // Formularios
 // Confirmación propia de la app (en lugar del confirm() del navegador): devuelve una promesa true/false
 function ask(msg,ok=t('Borrar'),ic='🗑️'){return new Promise(res=>{const ov=document.createElement('div');ov.className='ov';
@@ -240,7 +264,7 @@ const vis=AW().concat(mv?[mv.wallet_id,mv.to_wallet_id].map(WAL).filter(w=>w&&w.
 const WS=(n,l,v)=>`<label>${l}</label><select name="${n}">${vis.map(w=>`<option value="${w.id}" ${v==w.id?'selected':''}>${icoT(w.icon)} ${esc(w.name)}${multi()?' · '+CUR(w.currency_id).code:''}</option>`).join('')}</select>`;
 const CJ=(l,o)=>`<label>${l}</label><select name="goal_id" required>${S.goals.map(g=>`<option value="${g.id}" ${g.id==gid?'selected':''}>🐷 ${esc(g.name)}${o?' ('+(breakdown(gbal(g))||money(0,g.currency_id))+')':''}</option>`).join('')||`<option value="">${t('Creá una caja primero')}</option>`}</select>`;
 const GC=(n,l,g,v)=>g&&gcs(g).length>1?`<label>${l}</label><select name="${n}">${gcs(g).map(c=>`<option value="${c}" ${c==v?'selected':''}>${CUR(c).code} (${money(gbal(g)[c]||0,c)})</option>`).join('')}</select>`:'';
-const cats=k=>`<datalist id="cats">${S.categories.filter(c=>c.kind==k).map(c=>`<option value="${esc(c.name)}">${icoT(c.icon)} ${esc(t(c.name))}`).join('')}</datalist>`;
+
 const d0=mv?mv.date:S.view=='sem'&&!(today()>=S.week&&today()<=addD(S.week,6))?S.week:today(),tabs=T=='cambio'?['cambio']:['ingreso','egreso','ahorro','retiro','transferencia'].concat(T=='ajuste'?['ajuste']:[]),wv=mv&&mv.wallet_id||LWV;
 const amt0=mv?(ret?(mv.amount2!=null?-mv.amount2:-mv.amount):mv.amount):'';
 const f=sheet(`${mv?`<h2>${t('Editar movimiento')}</h2>`:''}<div class="seg">${tabs.map(k=>`<button type="button" data-t="${k}">${tl(k)}</button>`).join('')}</div>
@@ -271,10 +295,10 @@ x.innerHTML=T=='transferencia'?WS('wallet_id',t('Desde'),wv)+WS('to_wallet_id',t
 :T=='ahorro'?WS('wallet_id',t('Desde la billetera'),wv)+CJ(t('Hacia la caja de ahorro'))+GC('goal_cur',t('Moneda en la caja'),g,mv?mv.goal_cur:(gcs(g||{}).includes(wcur(wv))?wcur(wv):g&&g.currency_id))
 :T=='retiro'?CJ(t('Desde la caja de ahorro'),1)+GC('goal_cur',t('Moneda que sacás de la caja'),g,mv?mv.goal_cur:g&&g.currency_id)+WS('wallet_id',t('Hacia la billetera'),wv)
 :T=='cambio'?CJ(t('Caja'))+GC('goal_cur',t('De'),g,mv?mv.goal_cur:g&&g.currency_id)+GC('goal_cur2',t('A'),g,mv?mv.goal_cur2:gcs(g||{}).find(c=>c!=g.currency_id))
-:T=='egreso'?`<label>${t('Se paga con')}</label><select name="src">${vis.map(w=>`<option value="${w.id}" ${wv==w.id&&!(mv&&mv.goal_id)?'selected':''}>${icoT(w.icon)} ${esc(w.name)}</option>`).join('')}${S.goals.map(g=>`<option value="g${g.id}" ${mv&&mv.goal_id==g.id?'selected':''}>🐷 ${esc(g.name)}</option>`).join('')}</select><div id="egc"></div>
-<label>${t('Categoría')}</label><input name="category" list="cats" value="${esc(mv?mv.category:'')}" placeholder="${t('Elegí o escribí una nueva')}">${cats('egreso')}<label>${t('Importancia')}</label><select name="importance">${Object.keys(IMP).map(i=>`<option value="${i}" ${mv&&mv.importance==i?'selected':''}>${t(i)}`).join('')}</select>`
+:T=='egreso'?`<label>${t('Se paga con')}</label>${csel('src',vis.map(w=>({v:w.id,h:`<i class="cdot" style="background:${w.color}"></i><span class="cic">${icoH(w.icon)}</span>${esc(w.name)}${multi()?` <span class="mut">${CUR(w.currency_id).code}</span>`:''}`})).concat(S.goals.map(g=>({v:'g'+g.id,h:`<i class="cdot" style="background:var(--sv)"></i><span class="cic">🐷</span>${esc(g.name)}`}))),mv&&mv.goal_id?'g'+mv.goal_id:wv,t('Elegí con qué pagás'))}<div id="egc"></div>
+<label>${t('Categoría')}</label>${csel('category',catOpts('egreso',mv&&mv.type=='egreso'&&mv.category),mv?mv.category:'',t('Elegí una categoría'),t('No tenés categorías de gasto. Creálas en Menú → Categorías.'))}<label>${t('Prioridad')}</label>${csel('importance',(S.priorities||[]).map(p=>({v:p.name,h:`<i class="cdot" style="background:${p.color}"></i><span class="cic">${icoH(p.icon)}</span>${esc(t(p.name))}`})).concat(mv&&mv.importance&&!PRX(mv.importance)?[{v:mv.importance,h:esc(t(mv.importance))}]:[]),mv?mv.importance:'',t('Elegí una prioridad'),t('No tenés prioridades. Creálas en Menú → Prioridades.'))}`
 :T=='ajuste'?WS('wallet_id',t('Billetera'),wv)+`<p class="mut">${t('Corrección de saldo: suma (o resta, con monto negativo) a la billetera sin contar como ingreso ni gasto.')}</p>`
-:WS('wallet_id',t('Billetera'),wv)+`<label>${t('Categoría')}</label><input name="category" list="cats" placeholder="${t('Sueldo, extra…')}" value="${esc(mv?mv.category:'')}">${cats('ingreso')}`;egc();upFx()};
+:WS('wallet_id',t('Billetera'),wv)+`<label>${t('Categoría')}</label>${csel('category',catOpts('ingreso',mv&&mv.type=='ingreso'&&mv.category),mv?mv.category:'',t('Elegí una categoría'),t('No tenés categorías de ingreso. Creálas en Menú → Categorías.'))}`;egc();upFx()};
 // Gasto pagado con una caja de varias monedas: elegir de qué moneda sale
 const egc=()=>{const e=f.querySelector('#egc');if(!e)return;const s=E.src.value,g=s[0]=='g'&&S.goals.find(g=>g.id==+s.slice(1));e.innerHTML=g?GC('goal_cur',t('Moneda de la caja'),g,mv&&mv.goal_id==g.id?mv.goal_cur:g.currency_id):''};
 set();f.addEventListener('click',e=>{if(e.target.dataset.t){T=e.target.dataset.t;set()}});
@@ -287,14 +311,14 @@ async function saveFile(name,buf){const a=document.createElement('a');a.href=URL
 function openExport(){const cats=[...new Set(S.movs.map(x=>x.category).filter(Boolean))].sort(),
 sel=(n,l,o)=>`<label>${l}</label><select name="${n}"><option value="">${t('Todos')}</option>${o.map(([v,x])=>`<option value="${esc(v)}">${esc(x)}</option>`).join('')}</select>`;
 const f=sheet(`<h2>${t('Exportar a Excel')}</h2><div class="grid"><div><label>${t('Desde')}</label><input type="date" name="from" value="${S.from}"></div><div><label>${t('Hasta')}</label><input type="date" name="to" value="${S.to}"></div></div>
-${sel('type',t('Tipo'),['ingreso','egreso','ahorro','transferencia','ajuste','cambio'].map(k=>[k,tl(k)]))}${sel('wallet',t('Billetera'),S.wallets.map(w=>[w.id,w.name]))}${sel('importance',t('Importancia'),Object.keys(IMP).map(x=>[x,t(x)]))}
+${sel('type',t('Tipo'),['ingreso','egreso','ahorro','transferencia','ajuste','cambio'].map(k=>[k,tl(k)]))}${sel('wallet',t('Billetera'),S.wallets.map(w=>[w.id,w.name]))}${sel('importance',t('Prioridad'),(S.priorities||[]).map(p=>[p.name,t(p.name)]))}
 ${sel('category',t('Categoría'),cats.map(x=>[x,t(x)]))}${sel('goal',t('Caja de ahorro'),S.goals.map(g=>[g.id,g.name]))}<p class="mut" id="cnt"></p>`,
 async b=>{const r=flt(b);if(!r.length)throw new Error(t('No hay movimientos con esos filtros'));await doExport(r,b)},{submit:'⬇ '+t('Descargar Excel')});
 const upd=()=>{f.querySelector('#cnt').textContent=t('{0} movimientos coinciden con los filtros',flt(Object.fromEntries(new FormData(f))).length)};upd();f.oninput=upd}
 async function doExport(rows,f){if(!window.XLSX)throw new Error(t('No se pudo cargar el generador de Excel. Revisá tu conexión.'));
 const tc=CUR(TCUR()),sg=x=>x.type=='transferencia'||x.type=='cambio'?0:(x.type=='ingreso'||x.type=='ajuste')?vT(x):-vT(x),gn=id=>{const g=S.goals.find(g=>g.id==id);return g?g.name:''};
 const c2=x=>x.type=='transferencia'?wcur(x.to_wallet_id):x.type=='cambio'?x.goal_cur2:x.goal_cur;
-const R=[...rows].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id).map(x=>({[t('Fecha')]:D(x.date),[t('Tipo')]:tl(x.type=='ahorro'&&x.amount<0?'retiro':x.type),[t('Detalle')]:x.detail,[t('Categoría')]:x.category&&t(x.category),[t('Importancia')]:x.importance&&t(x.importance),
+const R=[...rows].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id).map(x=>({[t('Fecha')]:D(x.date),[t('Tipo')]:tl(x.type=='ahorro'&&x.amount<0?'retiro':x.type),[t('Detalle')]:x.detail,[t('Categoría')]:x.category&&t(x.category),[t('Prioridad')]:x.importance&&t(x.importance),
 [t('Billetera')]:WN(x.wallet_id),[t('Hacia')]:x.type=='transferencia'?WN(x.to_wallet_id):'',[t('Caja de ahorro')]:gn(x.goal_id),[t('Monto')]:x.amount,[t('Moneda')]:CUR(mcur(x)).code,
 [t('Monto del otro lado')]:x.amount2??'',[t('Moneda del otro lado')]:x.amount2!=null?CUR(c2(x)).code:'',[t('Monto con signo ({0})',tc.code)]:Math.round(sg(x)*100)/100}));
 const K=['Ingresos','Correcciones','Gastos','Ahorro','Pagado con cajas'].map(k=>t(k)),mm={};rows.forEach(x=>{const r=mm[x.date.slice(0,7)]??={[t('Mes')]:x.date.slice(0,7),...Object.fromEntries(K.map(k=>[k,0]))},v=vT(x);
@@ -302,7 +326,7 @@ if(x.type=='ingreso')r[K[0]]+=v;else if(x.type=='ajuste')r[K[1]]+=v;else if(x.ty
 const M=Object.values(mm).sort((a,b)=>a[t('Mes')].localeCompare(b[t('Mes')])).map(r=>({...r,[t('Resultado')]:r[K[0]]+r[K[1]]-(r[K[2]]-r[K[4]])-r[K[3]],[t('Tasa de ahorro (%)')]:r[K[0]]?Math.round(r[K[3]]/r[K[0]]*1000)/10:0}));
 const G=(k,n)=>{const g=grp(rows.filter(x=>x.type=='egreso'),k),s=g.reduce((s,[,v])=>s+v,0);return g.map(([a,v])=>({[n]:t(a),Total:Math.round(v*100)/100,[t('% del gasto')]:s?Math.round(v/s*1000)/10:0}))};
 const wb=XLSX.utils.book_new(),add=(n,d,w)=>{const ws=XLSX.utils.json_to_sheet(d.length?d:[{Info:t('Sin datos')}],{dateNF:'dd/mm/yyyy'});ws['!cols']=w.map(c=>({wch:c}));ws['!autofilter']={ref:ws['!ref']};XLSX.utils.book_append_sheet(wb,ws,n)};
-add(t('Movimientos'),R,[12,14,28,16,14,14,14,16,12,8,14,10,18]);add(t('Resumen mensual'),M,[10,14,14,14,14,18,14,18]);add(t('Gastos por categoría'),G('category',t('Categoría')),[22,14,12]);add(t('Gastos por importancia'),G('importance',t('Importancia')),[22,14,12]);
+add(t('Movimientos'),R,[12,14,28,16,14,14,14,16,12,8,14,10,18]);add(t('Resumen mensual'),M,[10,14,14,14,14,18,14,18]);add(t('Gastos por categoría'),G('category',t('Categoría')),[22,14,12]);add(t('Gastos por prioridad'),G('importance',t('Prioridad')),[22,14,12]);
 await saveFile(`fnz_${f.from||'inicio'}_${f.to||today()}.xlsx`,new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})))}
 
 // Cuotas: la moneda es la de la billetera (o la principal de la caja) con la que se paga
@@ -313,7 +337,7 @@ const pst=p=>{const done=p.skip+S.movs.filter(x=>x.plan_id==p.id&&x.type=='egres
 const pcur=p=>p.goal_id?(S.goals.find(g=>g.id==p.goal_id)||{}).currency_id:wcur(p.wallet_id);
 async function genCuotas(){let n=0;const x=today();for(const p of S.plans||[]){const have=new Set(S.movs.filter(m=>m.plan_id==p.id&&m.type=='egreso').map(m=>m.cuota_n));
 for(let i=p.skip+1;i<=p.total;i++){const d=nth(p,i);if(d>x)break;if(have.has(i))continue;
-try{await api('movements','POST',{type:'egreso',amount:p.amount,date:d,wallet_id:p.goal_id?null:p.wallet_id,goal_id:p.goal_id||null,dec_target:p.dec_target||0,category:'Cuotas',importance:'Necesario',detail:`${p.name} (${i}/${p.total})`,plan_id:p.id,cuota_n:i});
+try{await api('movements','POST',{type:'egreso',amount:p.amount,date:d,wallet_id:p.goal_id?null:p.wallet_id,goal_id:p.goal_id||null,dec_target:p.dec_target||0,category:'Cuotas',importance:((S.priorities||[])[0]||{}).name||'',detail:`${p.name} (${i}/${p.total})`,plan_id:p.id,cuota_n:i});
 n++}catch(e){}}}return n}
 function cuotas(){const t30=addD(today(),30),tc=TCUR();let deuda=0,prox=0;
 const cards=(S.plans||[]).map((p,i)=>{const s=pst(p),g=S.goals.find(g=>g.id==p.goal_id),c=pcur(p),mo=v=>money(v,c);deuda+=conv(p.amount*s.rem,c,tc);for(let j=s.done+1;j<=p.total&&nth(p,j)<=t30;j++)prox+=conv(p.amount,c,tc);
@@ -370,13 +394,25 @@ async function delCur(id){if(await ask(t('¿Borrar esta moneda?')))try{await api
 function categorias(){const blk=(k,n)=>`<div class="row"><h2>${t(n)}</h2><button class="l lk" onclick="catForm(null,'${k}')">＋ ${t('Agregar')}</button></div><div class="card">${S.categories.filter(c=>c.kind==k).map(c=>{const used=S.movs.filter(x=>x.type==k&&x.category==c.name).length;return`<div class="mv" style="--c:${c.color}"><div class="ic">${icoH(c.icon)}</div><div class="tx"><b>${esc(t(c.name))}</b><div class="mut">${used==1?t('1 movimiento'):t('{0} movimientos',used)}</div></div>
 <div class="am"><button class="l lk" onclick="catForm(${c.id})">${t('editar')}</button><button class="l" onclick="delCat(${c.id})">${t('borrar')}</button></div></div>`}).join('')||empty('🏷️',t('Sin categorías.'))}</div>`;
 return`<div class="row"><h1>🏷️ ${t('Categorías')}</h1><button class="p" style="width:auto;padding:9px 14px" onclick="catForm()">＋ ${t('Nueva categoría')}</button></div>
-<p class="mut">${t('Ordenan tus gastos e ingresos en los gráficos. Si al cargar un movimiento escribís una categoría nueva, se agrega sola acá.')}</p><div class="cols"><div>${blk('egreso','Gastos')}</div><div>${blk('ingreso','Ingresos')}</div></div>`}
+<p class="mut">${t('Ordenan tus gastos e ingresos en los gráficos. Al cargar un gasto o un ingreso elegís entre estas.')}</p><div class="cols"><div>${blk('egreso','Gastos')}</div><div>${blk('ingreso','Ingresos')}</div></div>`}
 function catForm(id,kind){const c=S.categories.find(c=>c.id==id);
 sheet(`<h2>${c?t('Editar categoría'):t('Nueva categoría')}</h2>${c?'':`<label>${t('Tipo')}</label><select name="kind"><option value="egreso">${t('Gasto')}</option><option value="ingreso" ${kind=='ingreso'?'selected':''}>${t('Ingreso')}</option></select>`}
 <label>${t('Nombre')}</label><input name="name" required maxlength="40" value="${esc(c?c.name:'')}">${c?`<p class="mut">${t('Si la renombrás, se actualizan también los movimientos que la usan.')}</p>`:''}
 <label>${t('Ícono')}</label>${iconPick(c?c.icon:'🏷️')}<label>${t('Color')}</label>${colorPick(c?c.color:PAL[S.categories.length%PAL.length])}`,
 async b=>{await api(c?'categories/'+id:'categories',c?'PUT':'POST',b);load()})}
 async function delCat(id){if(await ask(t('¿Borrar esta categoría? Los movimientos conservan el nombre.'))){await api('categories/'+id,'DELETE');load()}}
+
+// Prioridades (antes "importancia"): qué tan necesario es cada gasto
+function prioridades(){const P=S.priorities||[];
+return`<div class="row"><h1>🚦 ${t('Prioridades')}</h1><button class="p" style="width:auto;padding:9px 14px" onclick="prioForm()">＋ ${t('Nueva prioridad')}</button></div>
+<p class="mut">${t('Al cargar un gasto le ponés una prioridad: así ves cuánto se va en lo necesario y cuánto en gustos.')}</p>
+<div class="card narrow">${P.map(p=>{const used=S.movs.filter(x=>x.importance==p.name).length;return`<div class="mv" style="--c:${p.color}"><div class="ic">${icoH(p.icon)}</div><div class="tx"><b>${esc(t(p.name))}</b><div class="mut">${used==1?t('1 movimiento'):t('{0} movimientos',used)}</div></div>
+<div class="am"><button class="l lk" onclick="prioForm(${p.id})">${t('editar')}</button><button class="l" onclick="delPrio(${p.id})">${t('borrar')}</button></div></div>`}).join('')||empty('🚦',t('Sin prioridades.'))}</div>`}
+function prioForm(id){const p=(S.priorities||[]).find(p=>p.id==id);
+sheet(`<h2>${p?t('Editar prioridad'):t('Nueva prioridad')}</h2><label>${t('Nombre')}</label><input name="name" required maxlength="30" value="${esc(p?p.name:'')}" placeholder="${t('Ej: Ahorro')}">${p?`<p class="mut">${t('Si la renombrás, se actualizan también los movimientos que la usan.')}</p>`:''}
+<label>${t('Ícono')}</label>${iconPick(p?p.icon:'🚦')}<label>${t('Color')}</label>${colorPick(p?p.color:PAL[(S.priorities||[]).length%PAL.length])}`,
+async b=>{await api(p?'priorities/'+id:'priorities',p?'PUT':'POST',b);load()})}
+async function delPrio(id){if(await ask(t('¿Borrar esta prioridad? Los movimientos conservan el nombre.'))){await api('priorities/'+id,'DELETE');load()}}
 
 // Configuración
 function config(){const s=S.settings,th=s.theme||'crema',lg=s.lang||'es',m=MODE();
@@ -404,7 +440,7 @@ if(b.rep!==undefined&&b.new_password!==b.rep){m.textContent=t('Las contraseñas 
 try{const r=await api('account','PUT',b);S.username=r.username;render(1);toast(b.new_password?t('Contraseña actualizada'):t('Usuario actualizado'))}catch(x){m.textContent=x.message}}
 function openReset(){const w=WORDS[Math.floor(Math.random()*WORDS.length)]+'-'+(10+Math.floor(Math.random()*90));
 const f=sheet(`<h2 class="out">⚠️ ${t('Formatear cuenta')}</h2><p>${t('Elegí qué querés borrar:')}</p>
-${[['movimientos','Movimientos (ingresos, gastos, pases y correcciones)'],['cajas','Cajas de ahorro (con sus aportes y retiros)'],['cuotas','Planes de cuotas'],['billeteras','Billeteras y monedas (vuelven a Efectivo y Virtual en pesos; borra también movimientos, cajas y cuotas)'],['categorias','Categorías (vuelven a las de fábrica)'],['configuracion','Configuración (idioma, tema y totales)']].map(([k,n])=>`<label class="ck" style="margin:8px 0"><input type="checkbox" name="w_${k}"> ${t(n)}</label>`).join('')}
+${[['movimientos','Movimientos (ingresos, gastos, pases y correcciones)'],['cajas','Cajas de ahorro (con sus aportes y retiros)'],['cuotas','Planes de cuotas'],['billeteras','Billeteras y monedas (vuelven a Efectivo y Virtual en pesos; borra también movimientos, cajas y cuotas)'],['categorias','Categorías (vuelven a las de fábrica)'],['prioridades','Prioridades (vuelven a Necesario, Útil y Gusto)'],['configuracion','Configuración (idioma, tema y totales)']].map(([k,n])=>`<label class="ck" style="margin:8px 0"><input type="checkbox" name="w_${k}"> ${t(n)}</label>`).join('')}
 <div class="warn">${t('Si borrás los movimientos pero no los planes de cuotas, las cuotas ya vencidas se vuelven a cargar solas.')}</div>
 <label>${t('Para confirmar, escribí esta palabra:')}</label><div class="word">${w}</div><input name="word" autocomplete="off" autocapitalize="off" spellcheck="false" required>
 <label>${t('Tu contraseña')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div>`,

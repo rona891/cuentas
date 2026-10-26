@@ -28,11 +28,17 @@ const addCol=(t,c,d)=>{if(!db.prepare(`SELECT 1 FROM pragma_table_info('${t}') W
 ['goals','currency_id','INTEGER'],['goals','currencies',"TEXT DEFAULT ''"],['plans','wallet_id','INTEGER']].forEach(c=>addCol(...c));
 const PAL=['#5B4FE0','#0E9F6E','#E5484D','#2F7BEA','#D97706','#C026D3','#0891B2','#65A30D','#DB2777','#7C3AED'];
 const CATS={egreso:[['Comida','🍔'],['Transporte','🚌'],['Vivienda','🏠'],['Servicios','💡'],['Salud','💊'],['Ocio','🎉'],['Compras','🛍️'],['Cuotas','📆'],['Otros','📦']],ingreso:[['Sueldo','💼'],['Extra','✨'],['Otros ingresos','💰']]};
-function seed(uid,{cur,wal,cat}){let ars=null;
+// Prioridades de los gastos (antes "importancia"): los movimientos guardan el nombre en movements.importance
+const PRIOS=[['Necesario','🔴','#E5484D'],['Útil','🟡','#D97706'],['Gusto','🟢','#0E9F6E']];
+db.exec("CREATE TABLE IF NOT EXISTS priorities(id INTEGER PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),name TEXT NOT NULL,color TEXT DEFAULT '#5B4FE0',icon TEXT DEFAULT '🚦',sort INTEGER DEFAULT 0)");
+function seed(uid,{cur,wal,cat,pri}){let ars=null;
+if(pri){const p=db.prepare('INSERT INTO priorities(user_id,name,icon,color,sort) VALUES(?,?,?,?,?)');PRIOS.forEach(([n,ic,c],i)=>p.run(uid,n,ic,c,i+1))}
 if(cur)ars=db.prepare("INSERT INTO currencies(user_id,code,name,symbol,rate,base) VALUES(?,'ARS','Peso argentino','$',1,1)").run(uid).lastInsertRowid;
 if(wal){ars??=db.prepare('SELECT id FROM currencies WHERE user_id=? AND base=1').get(uid).id;const w=db.prepare('INSERT INTO wallets(user_id,name,currency_id,color,icon,sort) VALUES(?,?,?,?,?,?)');
 return{efectivo:w.run(uid,'Efectivo',ars,'#16A34A','💵',1).lastInsertRowid,virtual:w.run(uid,'Virtual',ars,'#2563EB','💳',2).lastInsertRowid,ars}}
 if(cat){const c=db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)');let i=0;for(const k in CATS)for(const[n,ic]of CATS[k])c.run(uid,n,k,PAL[i++%PAL.length],ic)}}
+const ensurePrio=(uid,name)=>{if(name&&!db.prepare('SELECT 1 FROM priorities WHERE user_id=? AND name=?').get(uid,name)){const n=db.prepare('SELECT COALESCE(MAX(sort),0)+1 n FROM priorities WHERE user_id=?').get(uid).n;
+db.prepare('INSERT INTO priorities(user_id,name,icon,color,sort) VALUES(?,?,?,?,?)').run(uid,name,'🚦',PAL[n%PAL.length],n)}};
 const ensureCat=(uid,name,kind)=>{if(name&&['ingreso','egreso'].includes(kind)&&!db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(uid,kind,name)){
 const n=db.prepare('SELECT COUNT(*) n FROM categories WHERE user_id=?').get(uid).n;db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)').run(uid,name,kind,PAL[n%PAL.length],'🏷️')}};
 if(db.prepare('PRAGMA user_version').get().user_version<2){db.exec('BEGIN');try{for(const{id:u}of db.prepare('SELECT id FROM users').all()){
@@ -42,6 +48,10 @@ db.prepare("UPDATE movements SET to_wallet_id=? WHERE user_id=? AND type='transf
 db.prepare('UPDATE movements SET goal_cur=? WHERE user_id=? AND goal_id IS NOT NULL').run(ids.ars,u);db.prepare("UPDATE goals SET currency_id=?,currencies=? WHERE user_id=?").run(ids.ars,String(ids.ars),u);
 for(const r of db.prepare("SELECT DISTINCT type,category FROM movements WHERE user_id=? AND category<>'' AND type IN ('ingreso','egreso')").all(u))ensureCat(u,r.category,r.type)}
 db.exec('PRAGMA user_version=2;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+if(db.prepare('PRAGMA user_version').get().user_version<3){db.exec('BEGIN');try{for(const{id:u}of db.prepare('SELECT id FROM users').all()){
+db.prepare("UPDATE movements SET importance=CASE importance WHEN 'Esencial' THEN 'Necesario' WHEN 'Necesario' THEN 'Útil' WHEN 'Prescindible' THEN 'Gusto' ELSE importance END WHERE user_id=?").run(u);
+seed(u,{pri:1});for(const r of db.prepare("SELECT DISTINCT importance FROM movements WHERE user_id=? AND importance<>''").all(u))ensurePrio(u,r.importance)}
+db.exec('PRAGMA user_version=3;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 const cleanIcon=(v,d)=>{v=String(v||'');if(v.startsWith('data:image/'))return/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(v)&&v.length<=60000?v:null;return v.replace(/[<>&"']/g,'').slice(0,8)||d};
 const own=(tbl,id,uid)=>id?db.prepare(`SELECT * FROM ${tbl} WHERE id=? AND user_id=?`).get(id,uid):null;
 const goalCurs=g=>String(g.currencies||g.currency_id).split(',').filter(Boolean).map(Number);
@@ -58,7 +68,7 @@ if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos min
 app.post('/api/register',limit,(req,res)=>{if(process.env.ALLOW_REGISTER==='0')return err(res,403,'Registro deshabilitado');
 const{username,password}=req.body;if(!/^[\w.-]{3,30}$/.test(username||'')||(password||'').length<8)return err(res,400,'Usuario (3-30 caracteres) y contraseña (mín. 8)');
 let r;try{r=db.prepare('INSERT INTO users(username,hash) VALUES(?,?)').run(username.toLowerCase(),bcrypt.hashSync(password,10))}catch{return err(res,409,'Ese usuario ya existe')}
-seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1});login(res,{id:r.lastInsertRowid,username})});
+seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1,pri:1});login(res,{id:r.lastInsertRowid,username})});
 app.post('/api/login',limit,(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(req.body.username||'').toLowerCase());
 if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash))return err(res,401,'Usuario o contraseña incorrectos');login(res,u)});
 app.post('/api/logout',(q,res)=>res.clearCookie('tk').json({}));
@@ -82,11 +92,12 @@ if(w.has('cuotas'))q('DELETE FROM plans WHERE user_id=?');
 if(w.has('cajas')){q('DELETE FROM movements WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM plans WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM goals WHERE user_id=?')}
 if(w.has('billeteras')){q('DELETE FROM wallets WHERE user_id=?');q('DELETE FROM currencies WHERE user_id=?');seed(u.id,{cur:1,wal:1})}
 if(w.has('categorias')){q('DELETE FROM categories WHERE user_id=?');seed(u.id,{cat:1})}
+if(w.has('prioridades')){q('DELETE FROM priorities WHERE user_id=?');seed(u.id,{pri:1})}
 if(w.has('configuracion'))q("UPDATE users SET settings='{}' WHERE id=?");
 db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');return err(res,500,'No se pudo formatear')}res.json({})});
 app.get('/api/data',(req,res)=>{const u=req.uid,all=t=>db.prepare(`SELECT * FROM ${t} WHERE user_id=?`).all(u);res.json({username:db.prepare('SELECT username FROM users WHERE id=?').get(u).username,settings:getSet(u),
 movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(u),goals:all('goals'),plans:all('plans'),currencies:db.prepare('SELECT * FROM currencies WHERE user_id=? ORDER BY base DESC,code').all(u),
-wallets:db.prepare('SELECT * FROM wallets WHERE user_id=? ORDER BY archived,sort,id').all(u),categories:db.prepare('SELECT * FROM categories WHERE user_id=? ORDER BY kind,name').all(u)})});
+wallets:db.prepare('SELECT * FROM wallets WHERE user_id=? ORDER BY archived,sort,id').all(u),categories:db.prepare('SELECT * FROM categories WHERE user_id=? ORDER BY kind,name').all(u),priorities:db.prepare('SELECT * FROM priorities WHERE user_id=? ORDER BY sort,id').all(u)})});
 
 // Monedas: rate = cuántos pesos (moneda base) vale 1 unidad
 const curData=(b,base)=>{const code=String(b.code||'').trim().toUpperCase(),name=String(b.name||'').trim().slice(0,30),symbol=String(b.symbol||'').replace(/[<>&"']/g,'').trim().slice(0,5),rate=+b.rate;
@@ -126,6 +137,16 @@ if(c.name!==o.name&&db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kin
 db.exec('BEGIN');db.prepare('UPDATE categories SET name=?,color=?,icon=? WHERE id=?').run(c.name,c.color,c.icon,o.id);db.prepare('UPDATE movements SET category=? WHERE user_id=? AND type=? AND category=?').run(c.name,req.uid,o.kind,o.name);db.exec('COMMIT');res.json({})});
 app.delete('/api/categories/:id',(req,res)=>{db.prepare('DELETE FROM categories WHERE id=? AND user_id=?').run(+req.params.id,req.uid);res.json({})});
 
+// Prioridades: igual que las categorías (renombrar actualiza los gastos que la usan)
+const prioData=b=>{const name=String(b.name||'').trim().slice(0,30);return name?{name,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#5B4FE0',icon:cleanIcon(b.icon,'🚦')}:null};
+app.post('/api/priorities',(req,res)=>{const p=prioData(req.body);if(p&&!p.icon)return err(res,400,'El ícono subido no es válido');if(!p)return err(res,400,'Poné un nombre a la prioridad');
+if(db.prepare('SELECT 1 FROM priorities WHERE user_id=? AND name=?').get(req.uid,p.name))return err(res,409,'Esa prioridad ya existe');const n=db.prepare('SELECT COALESCE(MAX(sort),0)+1 n FROM priorities WHERE user_id=?').get(req.uid).n;
+res.json({id:db.prepare('INSERT INTO priorities(user_id,name,color,icon,sort) VALUES(?,?,?,?,?)').run(req.uid,p.name,p.color,p.icon,n).lastInsertRowid})});
+app.put('/api/priorities/:id',(req,res)=>{const o=own('priorities',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa prioridad');const p=prioData(req.body);if(p&&!p.icon)return err(res,400,'El ícono subido no es válido');if(!p)return err(res,400,'Poné un nombre a la prioridad');
+if(p.name!==o.name&&db.prepare('SELECT 1 FROM priorities WHERE user_id=? AND name=?').get(req.uid,p.name))return err(res,409,'Esa prioridad ya existe');
+db.exec('BEGIN');db.prepare('UPDATE priorities SET name=?,color=?,icon=? WHERE id=?').run(p.name,p.color,p.icon,o.id);db.prepare('UPDATE movements SET importance=? WHERE user_id=? AND importance=?').run(p.name,req.uid,o.name);db.exec('COMMIT');res.json({})});
+app.delete('/api/priorities/:id',(req,res)=>{db.prepare('DELETE FROM priorities WHERE id=? AND user_id=?').run(+req.params.id,req.uid);res.json({})});
+
 // Cajas: moneda principal (meta y total) + monedas habilitadas
 const goalData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,60),cur=+b.currency_id,cs=[...new Set([cur,...(Array.isArray(b.currencies)?b.currencies.map(Number):[])])];
 return name&&cs.every(c=>own('currencies',c,uid))?{name,target:Math.max(0,+b.target||0),cur,cs:cs.join(',')}:null};
@@ -155,8 +176,8 @@ if(T==='cambio'){gc2=+b.goal_cur2;if(!cs.includes(gc2)||gc2===gc)return err(res,
 // Lo que sale de la caja (retiro o cambio de moneda) no puede dejarla en negativo en esa moneda
 const out=T==='ahorro'&&a<0?-(a2??a):T==='cambio'?a:0;
 if(out>0&&goalBal(u,g.id,gc,id)-out<-0.005)return err(res,400,'La caja no tiene saldo suficiente en esa moneda');
-const cat=String(b.category||'').trim().slice(0,40);ensureCat(u,cat,T);
-const v=[b.date,T,a,a2,cat,String(b.detail||'').slice(0,120),String(b.importance||'').slice(0,20),w&&w.id,w2&&w2.id,g&&g.id,gc,gc2,cj&&b.dec_target?1:0];
+const cat=String(b.category||'').trim().slice(0,40),imp=T==='egreso'?String(b.importance||'').trim().slice(0,30):'';ensureCat(u,cat,T);ensurePrio(u,imp);
+const v=[b.date,T,a,a2,cat,String(b.detail||'').slice(0,120),imp,w&&w.id,w2&&w2.id,g&&g.id,gc,gc2,cj&&b.dec_target?1:0];
 try{if(old)db.prepare('UPDATE movements SET date=?,type=?,amount=?,amount2=?,category=?,detail=?,importance=?,wallet_id=?,to_wallet_id=?,goal_id=?,goal_cur=?,goal_cur2=?,dec_target=? WHERE id=? AND user_id=?').run(...v,id,u);
 else{const pl=b.plan_id?own('plans',+b.plan_id,u):null;
 db.prepare('INSERT INTO movements(date,type,amount,amount2,category,detail,importance,wallet_id,to_wallet_id,goal_id,goal_cur,goal_cur2,dec_target,user_id,plan_id,cuota_n) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...v,u,pl?pl.id:null,pl?(+b.cuota_n||null):null)}
