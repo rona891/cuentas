@@ -1,0 +1,25 @@
+# Push a main -> prod (fnz.ebdistribuciones.com.ar)
+# Push a qa   -> qa   (fnz-qa.ebdistribuciones.com.ar)
+# La clave del secret solo puede ejecutar /usr/local/bin/cuentas-deploy en el VPS.
+name: Deploy
+on:
+  push:
+    branches: [main, qa]
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy al VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -o BatchMode=yes root@2.25.190.63 "$BRANCH"
