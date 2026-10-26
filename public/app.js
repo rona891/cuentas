@@ -65,8 +65,13 @@ async function logout(){await api('logout','POST').catch(()=>{});menu(0);Object.
 const MAIN=[['res','Resumen','📊'],['sem','Semanas','🗓️'],['aho','Ahorros','🐷'],['cuo','Cuotas','📆']],MENU=[['bil','Billeteras','👛'],['mon','Monedas','💱'],['cat','Categorías','🏷️'],['cfg','Configuración','⚙️'],['cta','Cuenta','👤']];
 function go(v){S.view=v;S.goal=null;menu(0);render()}
 function menu(o){$('#side').classList.toggle('open',!!o);const s=$('#scrim');if(o&&!s){const d=document.createElement('div');d.id='scrim';d.onclick=()=>menu(0);document.body.appendChild(d)}else if(!o&&s)s.remove()}
+// PC: el panel se puede esconder; escondido, ☰ lo muestra flotando al pasar el mouse y con clic lo vuelve a fijar
+function setCol(c){document.body.classList.toggle('collapsed',c);store('side',c?'0':'1');$('#side').classList.remove('peek');$('#side').innerHTML=side()}
+function initSide(){const sd=$('#side'),b=$('#dburger');document.body.classList.toggle('collapsed',store('side')=='0');
+b.onclick=()=>setCol(false);b.onmouseenter=()=>{if(document.body.classList.contains('collapsed')){sd.innerHTML=side();sd.classList.add('peek')}};sd.onmouseleave=()=>sd.classList.remove('peek')}
 function side(){const it=(c)=>([k,n,i])=>`<button class="it ${c}${S.view==k?' on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`;
-return`<div class="brand">💸 Cuentas</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
+const col=document.body.classList.contains('collapsed');
+return`<button class="pin" onclick="setCol(${!col})" title="${col?t('Fijar menú'):t('Ocultar menú')}" aria-label="${col?t('Fijar menú'):t('Ocultar menú')}">${col?'»':'«'}</button><div class="brand">💸 Cuentas</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
 <div class="sec main-only">${t('Principal')}</div>${MAIN.map(it('main-only')).join('')}<div class="sec">${t('Menú')}</div>${MENU.map(it('')).join('')}
 <div style="flex:1"></div><button class="it" onclick="logout()"><span>🚪</span>${t('Cerrar sesión')}</button>`}
 const VIEWS={res:()=>resumen(),sem:()=>semana(),cuo:()=>cuotas(),bil:()=>billeteras(),mon:()=>monedas(),cat:()=>categorias(),cfg:()=>config(),cta:()=>cuenta(),aho:()=>S.goal?meta():ahorros()};
@@ -118,7 +123,7 @@ return`<h1>${t('Semana')}</h1><div class="cols"><div><div class="row card" style
 <div class="sub"><span>${t('Ingresos')} <b>${mo(ing)}</b></span><span>${t('Gastos')} <b>${mo(egr)}</b></span><span>${t('Ahorro')} <b>${mo(aho)}</b></span>${aj?`<span>${t('Correcciones')} <b>${mo(aj)}</b></span>`:''}</div></div>
 <div class="grid">${AW().map(w=>{const e=bal(w.id,b),d=e-bal(w.id,addD(a,-1));return`<div class="card"><div class="wal"><div class="ic" style="--wc:${w.color}">${w.icon}</div><div><div class="mut">${tip(esc(w.name),t('Saldo al cierre de la semana. Arrastra lo de semanas anteriores.'))}</div><b>${money(e,w.currency_id)}</b><div class="mut">${d>=0?'+':'−'}${money(Math.abs(d),w.currency_id)} ${t('esta semana')}</div></div></div></div>`}).join('')}</div>
 ${filtros()}</div><div><h2>${t('Movimientos')}</h2><div id="lst">${lista()}</div></div></div>`}
-async function del(id){if(confirm(t('¿Borrar este movimiento?'))){try{await api('movements/'+id,'DELETE');load()}catch(e){toast(e.message)}}}
+async function del(id){if(await ask(t('¿Borrar este movimiento?'))){try{await api('movements/'+id,'DELETE');load()}catch(e){toast(e.message)}}}
 function edit(id){const x=S.movs.find(x=>x.id==id);if(x)openForm(null,null,x)}
 function mvRow(x){const g=S.goals.find(g=>g.id==x.goal_id),ret=x.type=='ahorro'&&x.amount<0,k=ret?'retiro':x.type,inCaja=S.view=='aho'&&S.goal,gc=x.goal_cur||(g&&g.currency_id);
 const sg=x.type=='transferencia'||x.type=='cambio'?'':inCaja?(x.type=='ahorro'&&x.amount>0?'+':'−'):(x.type=='ingreso'||(x.type=='ajuste'&&x.amount>0)||ret)?'+':'−';
@@ -173,9 +178,14 @@ ${cs.length>1?`<button class="p ghost" style="margin-bottom:10px" onclick="openF
 <div class="card kpi" style="--k:var(--in)"><div class="mut">${tip(t('Último aporte'),t('Monto de tu aporte más reciente.'))}</div><div class="v">${last?money(last.amount2??last.amount,last.goal_cur||pc):'—'}</div></div><div class="card kpi" style="--k:var(--tr)"><div class="mut">${tip(t('Meta en'),t('Semanas estimadas para llegar al objetivo al ritmo actual.'))}</div><div class="v">${s.eta?t('{0} semanas',s.eta):'—'}</div></div></div>
 <div class="row"><button class="l lk" onclick="goalForm(S.goals.find(g=>g.id==${g.id}))">✎ ${t('Editar caja')}</button><button class="l" onclick="delGoal(${g.id})">${t('Eliminar caja')}</button></div></div>
 <div><h2>${t('Movimientos de la caja')}</h2><div class="card">${s.A.map(mvRow).join('')||empty('🐷',t('Sin aportes todavía.'))}</div></div></div>`}
-async function delGoal(id){if(confirm(t('¿Eliminar esta caja?')))try{await api('goals/'+id,'DELETE');S.goal=null;load()}catch(e){toast(e.message)}}
+async function delGoal(id){if(await ask(t('¿Eliminar esta caja?'),t('Eliminar caja'),'🐷'))try{await api('goals/'+id,'DELETE');S.goal=null;load()}catch(e){toast(e.message)}}
 
 // Formularios
+// Confirmación propia de la app (en lugar del confirm() del navegador): devuelve una promesa true/false
+function ask(msg,ok=t('Borrar'),ic='🗑️'){return new Promise(res=>{const ov=document.createElement('div');ov.className='ov';
+ov.innerHTML=`<form class="ask"><div class="askic">${ic}</div><p>${esc(msg)}</p><button class="p danger">${ok}</button><button type="button" class="l x" style="width:100%">${t('Cancelar')}</button></form>`;
+document.body.appendChild(ov);const f=ov.querySelector('form'),done=v=>{ov.remove();res(v)};ov.onclick=e=>{if(e.target==ov||e.target.classList.contains('x'))done(false)};
+f.onsubmit=e=>{e.preventDefault();done(true)};f.onkeydown=e=>{if(e.key=='Escape')done(false)};setTimeout(()=>f.querySelector('.p').focus())})}
 function sheet(html,onsub,o={}){const ov=document.createElement('div');ov.className='ov';
 ov.innerHTML=`<form>${html}<p class="err"></p><button class="p${o.danger?' danger':''}">${o.submit||t('Guardar')}</button><button type="button" class="l x" style="width:100%">${t('Cancelar')}</button></form>`;
 document.body.appendChild(ov);const f=ov.querySelector('form');ov.onclick=e=>{if(e.target==ov||e.target.classList.contains('x'))ov.remove()};
@@ -278,7 +288,7 @@ return`<div class="row"><h1>${t('Cuotas')}</h1><button class="p" style="width:au
 <div class="kpis"><div class="card kpi" style="--k:var(--out)"><div class="mut">${tip(t('Próximos 30 días'),t('Total de cuotas que vencen en los próximos 30 días.'))}</div><div class="v out">${money(prox,tc)}</div></div>
 <div class="card kpi" style="--k:var(--acc)"><div class="mut">${tip(t('Deuda restante'),t('Suma de todas las cuotas que todavía faltan pagar.'))}</div><div class="v">${money(deuda,tc)}</div></div></div>
 <div class="gcards">${cards}</div>${cards?'':`<div class="card">${empty('📆',t('Todavía no cargaste cuotas. Creá un plan y la app descuenta cada cuota sola cuando vence.'))}</div>`}`}
-async function delPlan(id){if(confirm(t('¿Cancelar este plan? Las cuotas ya descontadas se mantienen.'))){await api('plans/'+id,'DELETE');load()}}
+async function delPlan(id){if(await ask(t('¿Cancelar este plan? Las cuotas ya descontadas se mantienen.'),t('Cancelar plan'),'📆')){await api('plans/'+id,'DELETE');load()}}
 function openPlan(){const f=sheet(`<h2>${t('Nuevo plan de cuotas')}</h2><label>${t('Nombre')}</label><input name="name" required maxlength="60" placeholder="${t('Ej: Celular')}">
 <div class="grid"><div><label>${t('Monto por cuota')}</label><input name="amount" type="number" step="any" min="0" required></div><div><label>${t('Cantidad de cuotas')}</label><input name="total" type="number" min="1" max="600" required></div></div>
 <div class="grid"><div><label>${t('Fecha de la 1ª cuota')}</label><input name="start" type="date" value="${today()}" required></div><div><label>${t('Ya pagadas')}</label><input name="skip" type="number" min="0" value="0"></div></div>
@@ -304,7 +314,7 @@ ${used?`<p class="mut">${t('Ya tiene movimientos: la moneda no se puede cambiar.
 <label>${t('Ícono')}</label>${picker('icon',ICONS,w?w.icon:'👛',x=>x)}<label>${t('Color')}</label>${picker('color',PAL,w?w.color:PAL[S.wallets.length%PAL.length],c=>`<i style="background:${c}"></i>`)}`,
 async b=>{const o={name:b.name,icon:b.icon,color:b.color,currency_id:used?w.currency_id:+b.currency_id};await api(w?'wallets/'+id:'wallets',w?'PUT':'POST',o);load()})}
 async function archW(id,a){try{await api('wallets/'+id,'PUT',{archived:a});load()}catch(e){toast(e.message)}}
-async function delW(id){if(confirm(t('¿Borrar esta billetera?')))try{await api('wallets/'+id,'DELETE');load()}catch(e){toast(e.message)}}
+async function delW(id){if(await ask(t('¿Borrar esta billetera?')))try{await api('wallets/'+id,'DELETE');load()}catch(e){toast(e.message)}}
 
 // Monedas
 function monedas(){const b=BASE();
@@ -318,19 +328,19 @@ sheet(`<h2>${c?t('Editar moneda'):t('Nueva moneda')}</h2>${c&&c.base?`<p class="
 <label>${t('Nombre')}</label><input name="name" required maxlength="30" value="${esc(c?c.name:'')}" placeholder="${t('Ej: Dólar')}">${c&&c.base?`<label>${t('Símbolo')}</label><input name="symbol" required maxlength="5" value="${esc(c.symbol)}">`:
 `<label>${t('Cotización: 1 unidad equivale a… ({0})',b.code)}</label><input name="rate" type="number" step="any" min="0" inputmode="decimal" required value="${c?c.rate:''}" placeholder="1500">`}`,
 async x=>{await api(c?'currencies/'+id:'currencies',c?'PUT':'POST',{...x,rate:+x.rate||1});load()})}
-async function delCur(id){if(confirm(t('¿Borrar esta moneda?')))try{await api('currencies/'+id,'DELETE');load()}catch(e){toast(e.message)}}
+async function delCur(id){if(await ask(t('¿Borrar esta moneda?')))try{await api('currencies/'+id,'DELETE');load()}catch(e){toast(e.message)}}
 
 // Categorías
-function categorias(){const blk=(k,n)=>`<h2>${t(n)}</h2><div class="card">${S.categories.filter(c=>c.kind==k).map(c=>{const used=S.movs.filter(x=>x.type==k&&x.category==c.name).length;return`<div class="mv" style="--c:${c.color}"><div class="ic">${c.icon}</div><div class="tx"><b>${esc(t(c.name))}</b><div class="mut">${used==1?t('1 movimiento'):t('{0} movimientos',used)}</div></div>
+function categorias(){const blk=(k,n)=>`<div class="row"><h2>${t(n)}</h2><button class="l lk" onclick="catForm(null,'${k}')">＋ ${t('Agregar')}</button></div><div class="card">${S.categories.filter(c=>c.kind==k).map(c=>{const used=S.movs.filter(x=>x.type==k&&x.category==c.name).length;return`<div class="mv" style="--c:${c.color}"><div class="ic">${c.icon}</div><div class="tx"><b>${esc(t(c.name))}</b><div class="mut">${used==1?t('1 movimiento'):t('{0} movimientos',used)}</div></div>
 <div class="am"><button class="l lk" onclick="catForm(${c.id})">${t('editar')}</button><button class="l" onclick="delCat(${c.id})">${t('borrar')}</button></div></div>`}).join('')||empty('🏷️',t('Sin categorías.'))}</div>`;
 return`<div class="row"><h1>🏷️ ${t('Categorías')}</h1><button class="p" style="width:auto;padding:9px 14px" onclick="catForm()">＋ ${t('Nueva categoría')}</button></div>
 <p class="mut">${t('Ordenan tus gastos e ingresos en los gráficos. Si al cargar un movimiento escribís una categoría nueva, se agrega sola acá.')}</p><div class="cols"><div>${blk('egreso','Gastos')}</div><div>${blk('ingreso','Ingresos')}</div></div>`}
-function catForm(id){const c=S.categories.find(c=>c.id==id);
-sheet(`<h2>${c?t('Editar categoría'):t('Nueva categoría')}</h2>${c?'':`<label>${t('Tipo')}</label><select name="kind"><option value="egreso">${t('Gasto')}</option><option value="ingreso">${t('Ingreso')}</option></select>`}
+function catForm(id,kind){const c=S.categories.find(c=>c.id==id);
+sheet(`<h2>${c?t('Editar categoría'):t('Nueva categoría')}</h2>${c?'':`<label>${t('Tipo')}</label><select name="kind"><option value="egreso">${t('Gasto')}</option><option value="ingreso" ${kind=='ingreso'?'selected':''}>${t('Ingreso')}</option></select>`}
 <label>${t('Nombre')}</label><input name="name" required maxlength="40" value="${esc(c?c.name:'')}">${c?`<p class="mut">${t('Si la renombrás, se actualizan también los movimientos que la usan.')}</p>`:''}
 <label>${t('Ícono')}</label>${picker('icon',ICONS,c?c.icon:'🏷️',x=>x)}<label>${t('Color')}</label>${picker('color',PAL,c?c.color:PAL[S.categories.length%PAL.length],x=>`<i style="background:${x}"></i>`)}`,
 async b=>{await api(c?'categories/'+id:'categories',c?'PUT':'POST',b);load()})}
-async function delCat(id){if(confirm(t('¿Borrar esta categoría? Los movimientos conservan el nombre.'))){await api('categories/'+id,'DELETE');load()}}
+async function delCat(id){if(await ask(t('¿Borrar esta categoría? Los movimientos conservan el nombre.'))){await api('categories/'+id,'DELETE');load()}}
 
 // Configuración
 function config(){const s=S.settings,th=s.theme||'claro',lg=s.lang||'es',m=MODE();
@@ -367,4 +377,4 @@ if(b.word.trim().toLowerCase()!==w)throw new Error(t('La palabra no coincide'));
 // Billeteras y monedas arrastra movimientos, cajas y cuotas: se tildan y bloquean solas
 f.addEventListener('change',e=>{if(e.target.name!='w_billeteras')return;['movimientos','cajas','cuotas'].forEach(k=>{const c=f.elements['w_'+k];c.checked=c.checked||e.target.checked;c.disabled=e.target.checked})})}
 
-load();
+initSide();load();

@@ -167,4 +167,6 @@ const EN={
 "¿Borrar esta moneda?":"Delete this currency?",
 "¿Falta la moneda? Creala primero en Monedas.":"Currency missing? Create it first in Currencies.",
 "Ícono":"Icon",
-"1 movimiento":"1 transaction","1 billetera":"1 wallet"};
+"1 movimiento":"1 transaction","1 billetera":"1 wallet",
+"Fijar menú":"Pin menu","Ocultar menú":"Hide menu",
+"Agregar":"Add"};
