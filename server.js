@@ -51,7 +51,10 @@ const V=Date.now().toString(36),INDEX=fs.readFileSync('public/index.html','utf8'
 app.get(['/','/index.html'],(req,res)=>res.set('Cache-Control','no-cache').type('html').send(INDEX));app.use(express.static('public'));
 const err=(res,c,m)=>res.status(c).json({error:m});
 const login=(res,u)=>res.cookie('tk',jwt.sign({uid:u.id},SECRET,{expiresIn:'30d'}),{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='1',maxAge:30*864e5}).json({username:u.username});
-const tries={};const limit=(req,res,next)=>{const k=req.ip,t=Date.now();tries[k]=(tries[k]||[]).filter(x=>t-x<9e5);if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos minutos');tries[k].push(t);next()};
+// Anti fuerza bruta: hasta 10 intentos fallidos cada 15 min por persona. Detrás de Cloudflare, req.ip es la IP de Cloudflare
+// (compartida por muchos usuarios), así que se usa la IP real que manda en CF-Connecting-IP.
+const tries={};const limit=(req,res,next)=>{const k=req.get('cf-connecting-ip')||req.ip,t=Date.now();tries[k]=(tries[k]||[]).filter(x=>t-x<9e5);
+if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos minutos');res.on('finish',()=>{if(res.statusCode>=400)tries[k].push(Date.now())});next()};
 app.post('/api/register',limit,(req,res)=>{if(process.env.ALLOW_REGISTER==='0')return err(res,403,'Registro deshabilitado');
 const{username,password}=req.body;if(!/^[\w.-]{3,30}$/.test(username||'')||(password||'').length<8)return err(res,400,'Usuario (3-30 caracteres) y contraseña (mín. 8)');
 let r;try{r=db.prepare('INSERT INTO users(username,hash) VALUES(?,?)').run(username.toLowerCase(),bcrypt.hashSync(password,10))}catch{return err(res,409,'Ese usuario ya existe')}
