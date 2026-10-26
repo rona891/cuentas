@@ -164,4 +164,4 @@ if(b.goal_id&&!own('goals',+b.goal_id,req.uid))return err(res,400,'Caja de ahorr
 db.prepare("INSERT INTO plans(user_id,name,amount,total,skip,start,freq,every,wallet,wallet_id,goal_id,dec_target) VALUES(?,?,?,?,?,?,?,?,'',?,?,?)").run(req.uid,n,a,t,sk,b.start,b.freq,ev,b.goal_id?null:+b.wallet_id,b.goal_id?+b.goal_id:null,b.goal_id&&b.dec_target?1:0);res.json({})});
 app.delete('/api/plans/:id',(req,res)=>{db.prepare('DELETE FROM plans WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
 app.delete('/api/movements/:id',(req,res)=>{db.prepare('DELETE FROM movements WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
-app.listen(process.env.PORT||3000,()=>console.log('Cuentas en puerto '+(process.env.PORT||3000)));
+app.listen(process.env.PORT||3000,()=>console.log('FNz en puerto '+(process.env.PORT||3000)));

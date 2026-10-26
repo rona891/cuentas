@@ -1,4 +1,4 @@
-// Cuentas: frontend sin build. Los textos pasan por t(): el español es la clave y i18n.js tiene el inglés.
+// FNz: frontend sin build. Los textos pasan por t(): el español es la clave y i18n.js tiene el inglés.
 const p2=x=>String(x).padStart(2,'0'),ds=d=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`,D=s=>new Date(s+'T12:00:00');
 const today=()=>ds(new Date()),addD=(s,n)=>{const d=D(s);d.setDate(d.getDate()+n);return ds(d)},wk=s=>addD(s,-((D(s).getDay()+2)%7)); // semanas desde el viernes
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -66,7 +66,7 @@ const breakdown=o=>curSum(o).map(([c,v])=>money(v,c)).join(' · ');
 async function load(){try{Object.assign(S,await api('data'));setLang(S.settings.lang||'es');applyTheme(S.settings.theme||'claro');
 if(await genCuotas()>0)Object.assign(S,await api('data'));document.body.classList.remove('auth');render()}catch(e){if(e.st==401)loginView();else toast(e.message)}}
 function loginView(){document.body.classList.add('auth');['#top','#side','#bnav'].forEach(s=>$(s).innerHTML='');
-$('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div style="font-size:44px">💸</div><h1 style="margin:6px 0 2px">Cuentas</h1><div class="mut">${t('Tus finanzas, claras.')}</div></div>
+$('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div style="font-size:44px">💸</div><h1 style="margin:6px 0 2px">FNz</h1><div class="mut">${t('Tus finanzas, claras.')}</div></div>
 <form class="card" onsubmit="auth(event)"><label>${t('Usuario')}</label><input name="u" autocomplete="username" required>
 <label>${t('Contraseña')}</label><input name="p" type="password" autocomplete="${S.reg?'new-password':'current-password'}" required><p class="err" id="e"></p>
 <button class="p">${S.reg?t('Crear cuenta'):t('Entrar')}</button><button type="button" class="l" style="width:100%" onclick="S.reg=!S.reg;loginView()">${S.reg?t('Ya tengo cuenta'):t('Crear una cuenta')}</button></form>
@@ -82,7 +82,7 @@ function initSide(){const sd=$('#side'),b=$('#dburger');document.body.classList.
 b.onclick=()=>setCol(false);b.onmouseenter=()=>{if(document.body.classList.contains('collapsed')){sd.innerHTML=side();sd.classList.add('peek')}};sd.onmouseleave=()=>sd.classList.remove('peek')}
 function side(){const it=(c)=>([k,n,i])=>`<button class="it ${c}${S.view==k?' on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`;
 const col=document.body.classList.contains('collapsed');
-return`<button class="pin" onclick="setCol(${!col})" title="${col?t('Fijar menú'):t('Ocultar menú')}" aria-label="${col?t('Fijar menú'):t('Ocultar menú')}">${col?'»':'«'}</button><div class="brand">💸 Cuentas</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
+return`<button class="pin" onclick="setCol(${!col})" title="${col?t('Fijar menú'):t('Ocultar menú')}" aria-label="${col?t('Fijar menú'):t('Ocultar menú')}">${col?'»':'«'}</button><div class="brand">💸 FNz</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
 <div class="sec main-only">${t('Principal')}</div>${MAIN.map(it('main-only')).join('')}<div class="sec">${t('Menú')}</div>${MENU.map(it('')).join('')}
 <div style="flex:1"></div><button class="it" onclick="logout()"><span>🚪</span>${t('Cerrar sesión')}</button>`}
 const VIEWS={res:()=>resumen(),sem:()=>semana(),cuo:()=>cuotas(),bil:()=>billeteras(),mon:()=>monedas(),cat:()=>categorias(),cfg:()=>config(),cta:()=>cuenta(),aho:()=>S.goal?meta():ahorros()};
@@ -297,7 +297,7 @@ const M=Object.values(mm).sort((a,b)=>a[t('Mes')].localeCompare(b[t('Mes')])).ma
 const G=(k,n)=>{const g=grp(rows.filter(x=>x.type=='egreso'),k),s=g.reduce((s,[,v])=>s+v,0);return g.map(([a,v])=>({[n]:t(a),Total:Math.round(v*100)/100,[t('% del gasto')]:s?Math.round(v/s*1000)/10:0}))};
 const wb=XLSX.utils.book_new(),add=(n,d,w)=>{const ws=XLSX.utils.json_to_sheet(d.length?d:[{Info:t('Sin datos')}],{dateNF:'dd/mm/yyyy'});ws['!cols']=w.map(c=>({wch:c}));ws['!autofilter']={ref:ws['!ref']};XLSX.utils.book_append_sheet(wb,ws,n)};
 add(t('Movimientos'),R,[12,14,28,16,14,14,14,16,12,8,14,10,18]);add(t('Resumen mensual'),M,[10,14,14,14,14,18,14,18]);add(t('Gastos por categoría'),G('category',t('Categoría')),[22,14,12]);add(t('Gastos por importancia'),G('importance',t('Importancia')),[22,14,12]);
-await saveFile(`cuentas_${f.from||'inicio'}_${f.to||today()}.xlsx`,new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})))}
+await saveFile(`fnz_${f.from||'inicio'}_${f.to||today()}.xlsx`,new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})))}
 
 // Cuotas: la moneda es la de la billetera (o la principal de la caja) con la que se paga
 const FQ={mensual:'Mensual',semanal:'Semanal',dias:'Cada X días'};
