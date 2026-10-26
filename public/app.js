@@ -21,7 +21,7 @@ const mcur=x=>x.wallet_id?wcur(x.wallet_id):x.goal_cur||BASE().id,vT=x=>conv(x.a
 
 // Apariencia e idioma
 const THEMES=[['claro','Claro',['#F2F4FA','#5B4FE0','#0E9F6E','#E5484D']],['oscuro','Oscuro',['#111318','#8B83F7','#34D399','#F87171']],['medianoche','Medianoche',['#060A18','#22D3EE','#A78BFA','#FB7185']],['crema','Crema',['#F6EFE2','#B45309','#3F7D20','#B42318']]];
-function applyTheme(th){document.documentElement.dataset.theme=th;store('theme',th);const m=$('meta[name=theme-color]');if(m)m.content=(THEMES.find(x=>x[0]==th)||THEMES[0])[2][0]}
+function applyTheme(th){document.documentElement.dataset.theme=th;store('theme',th);const m=$('meta[name=theme-color]');if(m)m.content=(THEMES.find(x=>x[0]==th)||THEMES[3])[2][0]}
 function setLang(l){L=l;store('lang',l);document.documentElement.lang=l}
 async function setS(k,v){S.settings[k]=v;if(k=='theme')applyTheme(v);if(k=='lang')setLang(v);render(1);try{S.settings=await api('settings','PUT',{[k]:v})}catch(e){toast(e.message)}}
 function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
@@ -63,7 +63,7 @@ const tot=(o,to)=>curSum(o).reduce((s,[c,v])=>s+conv(v,c,to),0);
 const breakdown=o=>curSum(o).map(([c,v])=>money(v,c)).join(' · ');
 
 // Carga, login y estructura
-async function load(){try{Object.assign(S,await api('data'));setLang(S.settings.lang||'es');applyTheme(S.settings.theme||'claro');
+async function load(){try{Object.assign(S,await api('data'));setLang(S.settings.lang||'es');applyTheme(S.settings.theme||'crema');
 if(await genCuotas()>0)Object.assign(S,await api('data'));document.body.classList.remove('auth');render()}catch(e){if(e.st==401)loginView();else toast(e.message)}}
 function loginView(){document.body.classList.add('auth');['#top','#side','#bnav'].forEach(s=>$(s).innerHTML='');
 $('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div style="font-size:44px">💸</div><h1 style="margin:6px 0 2px">FNz</h1><div class="mut">${t('Tus finanzas, claras.')}</div></div>
@@ -373,7 +373,7 @@ async b=>{await api(c?'categories/'+id:'categories',c?'PUT':'POST',b);load()})}
 async function delCat(id){if(await ask(t('¿Borrar esta categoría? Los movimientos conservan el nombre.'))){await api('categories/'+id,'DELETE');load()}}
 
 // Configuración
-function config(){const s=S.settings,th=s.theme||'claro',lg=s.lang||'es',m=MODE();
+function config(){const s=S.settings,th=s.theme||'crema',lg=s.lang||'es',m=MODE();
 return`<div class="narrow"><h1>⚙️ ${t('Configuración')}</h1>
 <h2>${t('Idioma')}</h2><div class="card"><div class="seg">${[['es','🇦🇷 Español'],['en','🇺🇸 English']].map(([k,n])=>`<button type="button" class="${lg==k?'on':''}" onclick="setS('lang','${k}')">${n}</button>`).join('')}</div></div>
 <h2>${t('Tema')}</h2><div class="themes">${THEMES.map(([k,n,c])=>`<button type="button" class="th ${th==k?'on':''}" onclick="setS('theme','${k}')"><div class="sw">${c.map(x=>`<i style="background:${x}"></i>`).join('')}</div><b>${t(n)}</b>${th==k?' ✓':''}</button>`).join('')}</div>
