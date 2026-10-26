@@ -1,4 +1,4 @@
-# Nombre del proyecto y puerto vienen de .env en cada carpeta del VPS
+# Nombre del proyecto, puerto y ALLOW_REGISTER (0 = cerrar el registro; por defecto abierto) vienen de .env en cada carpeta del VPS
 # (prod: /srv/cuentas -> 8090, qa: /srv/cuentas-qa -> 8091).
 services:
   cuentas:
@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       - COOKIE_SECURE=1
-      - ALLOW_REGISTER=0
+      - ALLOW_REGISTER=${ALLOW_REGISTER:-1}
     volumes:
       - ./data:/app/data
     ports:
