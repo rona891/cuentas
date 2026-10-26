@@ -62,13 +62,19 @@ const curSum=o=>Object.entries(o).filter(([,v])=>Math.abs(v)>0.004);
 const tot=(o,to)=>curSum(o).reduce((s,[c,v])=>s+conv(v,c,to),0);
 const breakdown=o=>curSum(o).map(([c,v])=>money(v,c)).join(' · ');
 
+// Botón para ver/ocultar la contraseña en cualquier campo de contraseña
+const EYE_ON='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19c-6.5 0-10-7-10-7a18.6 18.6 0 0 1 4.1-5.1M9.9 5.2A9.6 9.6 0 0 1 12 5c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M2 2l20 20"/></svg>';
+const EYE=()=>`<button type="button" class="eye" aria-label="${t('Mostrar contraseña')}" title="${t('Mostrar contraseña')}">${EYE_ON}</button>`;
+document.addEventListener('click',e=>{const b=e.target.closest('.pw .eye');if(!b)return;const i=b.previousElementSibling,show=i.type=='password';i.type=show?'text':'password';
+b.innerHTML=show?EYE_OFF:EYE_ON;b.title=b.ariaLabel=show?t('Ocultar contraseña'):t('Mostrar contraseña');i.focus()});
 // Carga, login y estructura
 async function load(){try{Object.assign(S,await api('data'));setLang(S.settings.lang||'es');applyTheme(S.settings.theme||'crema');
 if(await genCuotas()>0)Object.assign(S,await api('data'));document.body.classList.remove('auth');render()}catch(e){if(e.st==401)loginView();else toast(e.message)}}
 function loginView(){document.body.classList.add('auth');['#top','#side','#bnav'].forEach(s=>$(s).innerHTML='');
 $('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div style="font-size:44px">💸</div><h1 style="margin:6px 0 2px">FNz</h1><div class="mut">${t('Tus finanzas, claras.')}</div></div>
 <form class="card" onsubmit="auth(event)"><label>${t('Usuario')}</label><input name="u" autocomplete="username" required>
-<label>${t('Contraseña')}</label><input name="p" type="password" autocomplete="${S.reg?'new-password':'current-password'}" required><p class="err" id="e"></p>
+<label>${t('Contraseña')}</label><div class="pw"><input name="p" type="password" autocomplete="${S.reg?'new-password':'current-password'}" required>${EYE()}</div><p class="err" id="e"></p>
 <button class="p">${S.reg?t('Crear cuenta'):t('Entrar')}</button><button type="button" class="l" style="width:100%" onclick="S.reg=!S.reg;loginView()">${S.reg?t('Ya tengo cuenta'):t('Crear una cuenta')}</button></form>
 <div class="seg" style="max-width:200px;margin:12px auto">${[['es','Español'],['en','English']].map(([k,n])=>`<button type="button" class="${L==k?'on':''}" onclick="setLang('${k}');loginView()">${n}</button>`).join('')}</div>`}
 async function auth(e){e.preventDefault();const f=e.target;try{await api(S.reg?'register':'login','POST',{username:f.u.value,password:f.p.value});load()}catch(x){$('#e').textContent=x.message}}
@@ -387,9 +393,9 @@ const WORDS=['naranja','galaxia','pinguino','alfajor','brujula','lechuza','comet
 function cuenta(){return`<div class="narrow"><h1>👤 ${t('Cuenta')}</h1>
 <div class="card"><div class="wal"><div class="ic" style="--wc:var(--acc)">👤</div><div><div class="mut">${t('Usuario')}</div><b style="font-size:18px">${esc(S.username)}</b></div></div></div>
 <h2>${t('Cambiar usuario')}</h2><form class="card" onsubmit="acc(event)"><label>${t('Usuario nuevo')}</label><input name="username" required minlength="3" maxlength="30" autocomplete="username" autocapitalize="off">
-<label>${t('Contraseña actual')}</label><input name="password" type="password" required autocomplete="current-password"><p class="err"></p><button class="p">${t('Guardar usuario')}</button></form>
-<h2>${t('Cambiar contraseña')}</h2><form class="card" onsubmit="acc(event)"><label>${t('Contraseña actual')}</label><input name="password" type="password" required autocomplete="current-password">
-<label>${t('Contraseña nueva')}</label><input name="new_password" type="password" required minlength="8" autocomplete="new-password"><label>${t('Repetí la contraseña nueva')}</label><input name="rep" type="password" required minlength="8" autocomplete="new-password">
+<label>${t('Contraseña actual')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div><p class="err"></p><button class="p">${t('Guardar usuario')}</button></form>
+<h2>${t('Cambiar contraseña')}</h2><form class="card" onsubmit="acc(event)"><label>${t('Contraseña actual')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div>
+<label>${t('Contraseña nueva')}</label><div class="pw"><input name="new_password" type="password" required minlength="8" autocomplete="new-password">${EYE()}</div><label>${t('Repetí la contraseña nueva')}</label><div class="pw"><input name="rep" type="password" required minlength="8" autocomplete="new-password">${EYE()}</div>
 <p class="err"></p><button class="p">${t('Guardar contraseña')}</button></form>
 <h2 class="out">${t('Zona de peligro')}</h2><div class="card" style="border-color:color-mix(in srgb,var(--out) 45%,transparent)"><b>🧨 ${t('Formatear cuenta')}</b><p class="mut">${t('Borra los datos que elijas para empezar de cero. No se puede deshacer desde la app.')}</p><button class="p danger" onclick="openReset()">${t('Formatear cuenta…')}</button></div>
 <button class="p ghost" style="margin-top:14px" onclick="logout()">🚪 ${t('Cerrar sesión')}</button></div>`}
@@ -401,7 +407,7 @@ const f=sheet(`<h2 class="out">⚠️ ${t('Formatear cuenta')}</h2><p>${t('Eleg�
 ${[['movimientos','Movimientos (ingresos, gastos, pases y correcciones)'],['cajas','Cajas de ahorro (con sus aportes y retiros)'],['cuotas','Planes de cuotas'],['billeteras','Billeteras y monedas (vuelven a Efectivo y Virtual en pesos; borra también movimientos, cajas y cuotas)'],['categorias','Categorías (vuelven a las de fábrica)'],['configuracion','Configuración (idioma, tema y totales)']].map(([k,n])=>`<label class="ck" style="margin:8px 0"><input type="checkbox" name="w_${k}"> ${t(n)}</label>`).join('')}
 <div class="warn">${t('Si borrás los movimientos pero no los planes de cuotas, las cuotas ya vencidas se vuelven a cargar solas.')}</div>
 <label>${t('Para confirmar, escribí esta palabra:')}</label><div class="word">${w}</div><input name="word" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-<label>${t('Tu contraseña')}</label><input name="password" type="password" required autocomplete="current-password">`,
+<label>${t('Tu contraseña')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div>`,
 async b=>{const what=Object.keys(b).filter(k=>k.startsWith('w_')).map(k=>k.slice(2));if(!what.length)throw new Error(t('Elegí qué querés borrar'));
 if(b.word.trim().toLowerCase()!==w)throw new Error(t('La palabra no coincide'));await api('reset','POST',{password:b.password,what});S.view='res';S.goal=null;toast(t('Listo, cuenta formateada'));load()},{submit:t('Formatear'),danger:1});
 // Billeteras y monedas arrastra movimientos, cajas y cuotas: se tildan y bloquean solas

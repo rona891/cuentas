@@ -94,6 +94,7 @@ body.auth #top,body.auth #side,body.auth #bnav{display:none}body.auth main{max-w
 .pick .cpick{border:1.5px solid var(--line);background:conic-gradient(#f43f5e,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#a855f7,#f43f5e)}
 .pick .cpick::after{content:"";width:24px;height:24px;border-radius:50%;background:var(--cc);border:2px solid var(--card)}.pick .cpick:not(.on)::after{display:none}
 .pick .cpick.on{border-color:var(--acc);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}.pick .cpick input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.pw{position:relative}.pw input{padding-right:46px}.pw .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:var(--mut);display:grid;place-items:center;border-radius:9px;padding:0}.pw .eye:hover{color:var(--ink);background:var(--soft)}
 /* PC: panel fijo a la izquierda y contenido a todo el ancho */
 @media (min-width:1024px){
  #top,#bnav,#scrim{display:none}
