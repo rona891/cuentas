@@ -124,7 +124,7 @@ ${byd?`<p class="mut">${t('Día en que más gastás:')} <b>${byd[0]}</b></p>`:''
 <h2>${t('Gastos por billetera')}</h2><div class="card">${bars(grp(E.map(m=>({...m,w:m.wallet_id?m.wallet_id:'c'})),'w'),k=>k=='c'?'var(--sv)':wCol(k),k=>k=='c'?'🐷 '+t('Caja de ahorro'):wIc(k)+' '+esc(WN(k)))}</div></div>
 <div><h2>${t('Últimos movimientos')}</h2><div class="card">${M.slice(0,8).map(mvRow).join('')||empty('🗒️',t('Todavía no hay movimientos en este período.'))}</div>${M.length>8?`<button class="l lk" onclick="S.f.all=true;go('sem')">${t('Ver todos los movimientos')} →</button>`:''}</div></div>`}
 function corr(id){const w=WAL(id),cur=bal(id,today());sheet(`<h2>${t('Corregir saldo de {0}',esc(w.name))}</h2><p class="mut">${t('Hoy la app dice {0}. Poné cuánto tenés realmente y se registra la diferencia, sin contar como ingreso ni gasto.',money(cur,w.currency_id))}</p>
-<label>${t('Saldo real')} (${CUR(w.currency_id).code})</label><input name="v" type="number" step="any" inputmode="decimal" required value="${Math.round(cur*100)/100}">`,async b=>{const d=Math.round((+b.v-cur)*100)/100;if(!d){toast(t('El saldo ya coincide.'));return}
+<label>${t('Saldo real')} (${CUR(w.currency_id).code})</label>${mi('v',Math.round(cur*100)/100,{sym:CUR(w.currency_id).symbol+(CUR(w.currency_id).symbol.length>1?' ':''),neg:1,req:1})}`,async b=>{const d=Math.round((+b.v-cur)*100)/100;if(!d){toast(t('El saldo ya coincide.'));return}
 await api('movements','POST',{type:'ajuste',amount:d,date:today(),wallet_id:id,detail:t('Corrección de saldo')});load()})}
 
 // Semanas y lista de movimientos
@@ -154,7 +154,7 @@ return`${fAct()?`<p class="mut">${t('Mostrando {0} de {1} movimientos',r.length,
 function filtros(){const f=S.f;
 return`<details ${S.fo||fAct()?'open':''} ontoggle="S.fo=this.open" class="card"><summary><b>${t('Filtros')}</b>${fAct()?` <span class="tag">${t('activos')}</span>`:''}</summary>
 <div class="seg" style="margin-top:10px">${['ingreso','egreso','ahorro','transferencia','ajuste'].map(k=>`<button type="button" class="${f.types.includes(k)?'on':''}" onclick="fT('${k}')">${tl(k)}</button>`).join('')}</div>
-<div class="grid"><div><label>${t('Monto mínimo')}</label><input type="number" inputmode="decimal" value="${esc(f.min)}" oninput="S.f.min=this.value;upL()"></div><div><label>${t('Monto máximo')}</label><input type="number" inputmode="decimal" value="${esc(f.max)}" oninput="S.f.max=this.value;upL()"></div></div>
+<div class="grid"><div><label>${t('Monto mínimo')}</label>${mi('',f.min,{attrs:'oninput="S.f.min=pmEl(this);upL()"'})}</div><div><label>${t('Monto máximo')}</label>${mi('',f.max,{attrs:'oninput="S.f.max=pmEl(this);upL()"'})}</div></div>
 <label>${t('Billetera')}</label><select onchange="S.f.wallet=this.value;upL()"><option value="">${t('Todas')}</option>${S.wallets.map(w=>`<option value="${w.id}" ${f.wallet==w.id?'selected':''}>${icoT(w.icon)} ${esc(w.name)}</option>`).join('')}</select>
 <label>${t('Buscar en detalle o categoría')}</label><input value="${esc(f.q)}" oninput="S.f.q=this.value;upL()">
 <label class="ck" style="margin-top:12px"><input type="checkbox" ${f.all?'checked':''} onchange="S.f.all=this.checked;upL()"> ${t('Buscar en todas las semanas')}</label>
@@ -174,7 +174,7 @@ ${S.goals.length?'':`<div class="card">${empty('🐷',t('Todavía no tenés caja
 function goalForm(g){const pc=g?g.currency_id:BASE().id,on=g?gcs(g):[pc];
 const f=sheet(`<h2>${g?t('Editar caja'):t('Nueva caja de ahorro')}</h2><label>${t('Nombre')}</label><input name="name" required maxlength="60" value="${esc(g?g.name:'')}" placeholder="${t('Ej: Vacaciones')}">
 <label>${t('Moneda principal')}</label><select name="currency_id">${S.currencies.map(c=>`<option value="${c.id}" ${c.id==pc?'selected':''}>${c.code} · ${esc(c.name)}</option>`).join('')}</select>
-<label>${t('Meta (opcional, en la moneda principal)')}</label><input name="target" type="number" step="any" min="0" inputmode="decimal" value="${g&&g.target||''}" placeholder="0 = ${t('sin meta')}">
+<label>${t('Meta (opcional, en la moneda principal)')}</label>${mi('target',g&&g.target||'',{sym:CUR(pc).symbol+(CUR(pc).symbol.length>1?' ':''),ph:'0 = '+t('sin meta')})}
 ${S.currencies.length>1?`<label>${t('Monedas que puede guardar esta caja')}</label>${S.currencies.map(c=>`<label class="ck" style="margin:6px 0"><input type="checkbox" name="c_${c.id}" ${on.includes(c.id)?'checked':''}> ${c.code} · ${esc(c.name)}</label>`).join('')}
 <p class="mut">${t('Así podés ahorrar en varias monedas dentro de la misma caja y ver el total junto. La principal siempre queda habilitada.')}</p>`:''}`,
 async b=>{const cs=Object.keys(b).filter(k=>k.startsWith('c_')).map(k=>+k.slice(2));await api(g?'goals/'+g.id:'goals',g?'PUT':'POST',{name:b.name,target:+b.target||0,currency_id:+b.currency_id,currencies:cs});load()})}
@@ -191,6 +191,24 @@ ${cs.length>1?`<button class="p ghost" style="margin-bottom:10px" onclick="openF
 <div><h2>${t('Movimientos de la caja')}</h2><div class="card">${s.A.map(mvRow).join('')||empty('🐷',t('Sin aportes todavía.'))}</div></div></div>`}
 async function delGoal(id){if(await ask(t('¿Eliminar esta caja?'),t('Eliminar caja'),'🐷'))try{await api('goals/'+id,'DELETE');S.goal=null;load()}catch(e){toast(e.message)}}
 
+// Campos de monto con formato mientras se escribe ($100.000,50 en español, $100,000.50 en inglés).
+// El valor visible lleva símbolo y separadores; pmEl() lo convierte a número. data-sym: símbolo, data-dec: decimales, data-neg: permite negativos.
+const SEP=()=>L=='en'?[',','.']:['.',','],reEsc=x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const fmtN=(n,sym='',dec=2)=>{if(n===''||n==null||isNaN(n))return'';const[th,dc]=SEP(),[i,d]=String(+Math.abs(+n).toFixed(dec)).split('.');return(n<0?'-':'')+sym+i.replace(/\B(?=(\d{3})+(?!\d))/g,th)+(d?dc+d:'')};
+const pm=v=>{const[th,dc]=SEP(),x=String(v).replace(new RegExp('[^0-9\\-'+reEsc(dc)+']','g'),'').replace(dc,'.');return x===''||x=='-'?'':+x};
+const pmEl=el=>pm((el.dataset.sym&&el.value.includes(el.dataset.sym)?el.value.replace(el.dataset.sym,''):el.value).split(SEP()[0]).join(''));
+const mi=(name,val,o={})=>`<input ${name?`name="${name}"`:''} class="money" type="text" inputmode="decimal" autocomplete="off" data-sym="${esc(o.sym??'')}" data-dec="${o.dec??2}"${o.neg?' data-neg="1"':''}${o.req?' required':''}${o.attrs?' '+o.attrs:''} value="${esc(fmtN(val,o.sym??'',o.dec??2))}"${o.ph?` placeholder="${esc(o.ph)}"`:''}>`;
+const setM=(el,n)=>{el.value=fmtN(n,el.dataset.sym,+el.dataset.dec);el._raw=el.value};
+const setSym=(el,cid)=>{const y=CUR(cid).symbol+(CUR(cid).symbol.length>1?' ':'');if(el&&el.dataset.sym!==y){const n=pmEl(el);el.dataset.sym=y;setM(el,n)}};
+function mask(el){const[th,dc]=SEP(),sym=el.dataset.sym||'',dec=+el.dataset.dec,old=el.value,atEnd=(el.selectionStart??old.length)>=old.length;
+let v=sym&&old.startsWith(sym)?old.slice(sym.length):old.replace(sym.trim(),'');
+// La tecla decimal del celular puede mandar "." en vez de ",": si se acaba de agregar al final, se toma como decimal
+if(dec&&el._raw!=null&&old.length==el._raw.length+1&&v.endsWith(th)&&!v.slice(0,-1).includes(dc))v=v.slice(0,-1)+dc;
+const neg=el.dataset.neg&&v.trim().startsWith('-'),k=old.slice(0,el.selectionStart??old.length).replace(/[^0-9]/g,'').length;
+let[i,...d]=v.replace(new RegExp('[^0-9'+reEsc(dc)+']','g'),'').split(dc);i=i.replace(/^0+(?=\d)/,'');const hasD=dec>0&&d.length>0;
+const out=!i&&!hasD?(neg?'-':''):(neg?'-':'')+sym+(i||'0').replace(/\B(?=(\d{3})+(?!\d))/g,th)+(hasD?dc+d.join('').slice(0,dec):'');
+el.value=out;el._raw=out;if(document.activeElement!==el)return;let p=out.length;if(!atEnd){p=0;let c=0;while(p<out.length&&c<k){if(/\d/.test(out[p]))c++;p++}}el.setSelectionRange(p,p)}
+document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('money'))mask(e.target)},true);
 // Formularios
 // Confirmación propia de la app (en lugar del confirm() del navegador): devuelve una promesa true/false
 function ask(msg,ok=t('Borrar'),ic='🗑️'){return new Promise(res=>{const ov=document.createElement('div');ov.className='ov';
@@ -200,16 +218,16 @@ f.onsubmit=e=>{e.preventDefault();done(true)};f.onkeydown=e=>{if(e.key=='Escape'
 function sheet(html,onsub,o={}){const ov=document.createElement('div');ov.className='ov';
 ov.innerHTML=`<form>${html}<p class="err"></p><button class="p${o.danger?' danger':''}">${o.submit||t('Guardar')}</button><button type="button" class="l x" style="width:100%">${t('Cancelar')}</button></form>`;
 document.body.appendChild(ov);const f=ov.querySelector('form');ov.onclick=e=>{if(e.target==ov||e.target.classList.contains('x'))ov.remove()};
-f.onsubmit=async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(f));try{await onsub(b,f);ov.remove()}catch(x){f.querySelector('.err').textContent=x.message}};
+f.onsubmit=async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(f));f.querySelectorAll('input.money[name]').forEach(i=>{if(!i.disabled)b[i.name]=pmEl(i)});try{await onsub(b,f);ov.remove()}catch(x){f.querySelector('.err').textContent=x.message}};
 setTimeout(()=>{const i=f.querySelector('input:not([type=hidden]):not([type=checkbox])');if(i&&matchMedia('(min-width:1024px)').matches)i.focus()});return f}
 let T='egreso',LWV=null;
 // Tipo de cambio entre dos monedas: se muestra como "1 [la más fuerte] = X [la más débil]" y calcula lo que entra del otro lado
 const hiLo=(a,b)=>CUR(a).rate>=CUR(b).rate?[a,b]:[b,a];
 function fxHtml(from,to,a,a2){const[hi,lo]=hiLo(from,to),r=a&&a2?(hi==from?a2/a:a/a2):CUR(hi).rate/CUR(lo).rate;
-return`<div class="fx"><label>${t('Tipo de cambio')}</label><div class="fxr"><span>1 ${CUR(hi).code} =</span><input name="fxr" type="number" step="any" inputmode="decimal" value="${+r.toFixed(4)}" required><span>${CUR(lo).code}</span></div>
-<label>${t('Entra del otro lado ({0})',CUR(to).code)}</label><input name="amount2" type="number" step="any" inputmode="decimal" value="${a2?Math.abs(a2):''}" required data-from="${from}" data-to="${to}"></div>`}
-function fxCalc(f,src){const a2=f.elements.amount2;if(!a2)return;const a=Math.abs(+f.elements.amount.value),[hi]=hiLo(+a2.dataset.from,+a2.dataset.to),fr=f.elements.fxr,isHi=hi==+a2.dataset.from;
-if(src=='amount2'){const v=+a2.value;if(a&&v)fr.value=+(isHi?v/a:a/v).toFixed(4)}else{const r=+fr.value;if(a&&r)a2.value=Math.round((isHi?a*r:a/r)*100)/100}}
+return`<div class="fx"><label>${t('Tipo de cambio')}</label><div class="fxr"><span>1 ${CUR(hi).code} =</span>${mi('fxr',+r.toFixed(4),{dec:4,req:1})}<span>${CUR(lo).code}</span></div>
+<label>${t('Entra del otro lado ({0})',CUR(to).code)}</label>${mi('amount2',a2?Math.abs(a2):'',{sym:CUR(to).symbol+(CUR(to).symbol.length>1?' ':''),req:1,attrs:`data-from="${from}" data-to="${to}"`})}</div>`}
+function fxCalc(f,src){const a2=f.elements.amount2;if(!a2)return;const a=Math.abs(+pmEl(f.elements.amount)),[hi]=hiLo(+a2.dataset.from,+a2.dataset.to),fr=f.elements.fxr,isHi=hi==+a2.dataset.from;
+if(src=='amount2'){const v=+pmEl(a2);if(a&&v)setM(fr,+(isHi?v/a:a/v).toFixed(4))}else{const r=+pmEl(fr);if(a&&r)setM(a2,Math.round((isHi?a*r:a/r)*100)/100)}}
 // mv: movimiento a editar. 'retiro' = ahorro con monto negativo (de la caja a una billetera); 'ajuste' = corrección de saldo; 'cambio' = de una moneda a otra dentro de una caja
 function openForm(type,gid,mv){const ret=mv&&mv.type=='ahorro'&&mv.amount<0;T=mv?(ret?'retiro':mv.type):type||'egreso';gid=mv?mv.goal_id:gid;
 const vis=AW().concat(mv?[mv.wallet_id,mv.to_wallet_id].map(WAL).filter(w=>w&&w.archived):[]);LWV=LWV&&WAL(LWV)&&!WAL(LWV).archived?LWV:(vis[0]||{}).id;
@@ -220,7 +238,7 @@ const cats=k=>`<datalist id="cats">${S.categories.filter(c=>c.kind==k).map(c=>`<
 const d0=mv?mv.date:S.view=='sem'&&!(today()>=S.week&&today()<=addD(S.week,6))?S.week:today(),tabs=T=='cambio'?['cambio']:['ingreso','egreso','ahorro','retiro','transferencia'].concat(T=='ajuste'?['ajuste']:[]),wv=mv&&mv.wallet_id||LWV;
 const amt0=mv?(ret?(mv.amount2!=null?-mv.amount2:-mv.amount):mv.amount):'';
 const f=sheet(`${mv?`<h2>${t('Editar movimiento')}</h2>`:''}<div class="seg">${tabs.map(k=>`<button type="button" data-t="${k}">${tl(k)}</button>`).join('')}</div>
-<label id="al">${t('Monto')}</label><input name="amount" type="number" step="any" inputmode="decimal" required value="${amt0}"><label>${t('Fecha')}</label><input name="date" type="date" value="${d0}" required>
+<label id="al">${t('Monto')}</label>${mi('amount',amt0,{neg:1,req:1})}<label>${t('Fecha')}</label><input name="date" type="date" value="${d0}" required>
 <label>${t('Detalle')}</label><input name="detail" maxlength="120" value="${esc(mv?mv.detail:'')}"><div id="x"></div><div id="fxw"></div>`,async b=>{
 const o={type:T,date:b.date,detail:b.detail,amount:+b.amount,category:b.category||'',importance:b.importance||''},a2=b.amount2!=null?+b.amount2:null;
 if(T=='egreso'){const s=b.src;if(s[0]=='g'){o.goal_id=+s.slice(1);o.goal_cur=+b.goal_cur||null;o.dec_target=mv&&mv.goal_id==o.goal_id?mv.dec_target:0}else o.wallet_id=+s}
@@ -237,9 +255,10 @@ if(T=='transferencia')return[wcur(E.wallet_id.value),wcur(E.to_wallet_id.value)]
 if(T=='ahorro')return g?[wcur(E.wallet_id.value),gc()]:null;if(T=='retiro')return g?[gc(),wcur(E.wallet_id.value)]:null;
 if(T=='cambio')return E.goal_cur&&E.goal_cur2?[+E.goal_cur.value,+E.goal_cur2.value]:null;if(T=='egreso'&&E.src.value[0]=='g')return null;return null};
 const upFx=()=>{const s=sides(),w=f.querySelector('#fxw'),al=f.querySelector('#al');let h='';
-al.textContent=t('Monto')+(T=='retiro'?' ('+t('sale de la caja')+')':'')+(s?' · '+CUR(s[0]).code:E.wallet_id?' · '+CUR(wcur(E.wallet_id.value)).code:'');
+const eg=T=='egreso'&&E.src&&E.src.value[0]=='g'?S.goals.find(g=>g.id==+E.src.value.slice(1)):null,ca=s?s[0]:eg?(E.goal_cur?+E.goal_cur.value:eg.currency_id):T=='egreso'&&E.src?wcur(E.src.value):E.wallet_id?wcur(E.wallet_id.value):BASE().id;
+al.textContent=t('Monto')+(T=='retiro'?' ('+t('sale de la caja')+')':'')+' · '+CUR(ca).code;setSym(E.amount,ca);
 if(s&&s[0]!=s[1]){const g=G();if(g&&(T=='ahorro'||T=='retiro'))h+=`<div class="warn">⚠️ ${T=='ahorro'?t('Estás cargando la caja {0} en {1} con una billetera en {2}.',esc(g.name),CUR(s[1]).code,CUR(s[0]).code):t('Estás sacando {0} de la caja {1} hacia una billetera en {2}.',CUR(s[0]).code,esc(g.name),CUR(s[1]).code)} ${t('Lo ideal es primero pasar la plata a una billetera en la misma moneda (con un Pase) y desde ahí aportar o retirar. Si seguís igual, indicá a qué tipo de cambio hiciste la conversión.')}</div>`;
-const keep=mv&&mv.amount2!=null?Math.abs(ret?mv.amount:mv.amount2):null;h+=fxHtml(s[0],s[1],+E.amount.value,keep)}
+const keep=mv&&mv.amount2!=null?Math.abs(ret?mv.amount:mv.amount2):null;h+=fxHtml(s[0],s[1],+pmEl(E.amount),keep)}
 w.innerHTML=h;if(h&&!E.amount2.value)fxCalc(f,'fxr')};
 const set=()=>{f.querySelectorAll('[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t==T));const g=S.goals.find(g=>g.id==gid)||S.goals[0];
 x.innerHTML=T=='transferencia'?WS('wallet_id',t('Desde'),wv)+WS('to_wallet_id',t('Hacia'),mv&&mv.to_wallet_id||(vis.find(w=>w.id!=wv)||{}).id)
@@ -301,7 +320,7 @@ return`<div class="row"><h1>${t('Cuotas')}</h1><button class="p" style="width:au
 <div class="gcards">${cards}</div>${cards?'':`<div class="card">${empty('📆',t('Todavía no cargaste cuotas. Creá un plan y la app descuenta cada cuota sola cuando vence.'))}</div>`}`}
 async function delPlan(id){if(await ask(t('¿Cancelar este plan? Las cuotas ya descontadas se mantienen.'),t('Cancelar plan'),'📆')){await api('plans/'+id,'DELETE');load()}}
 function openPlan(){const f=sheet(`<h2>${t('Nuevo plan de cuotas')}</h2><label>${t('Nombre')}</label><input name="name" required maxlength="60" placeholder="${t('Ej: Celular')}">
-<div class="grid"><div><label>${t('Monto por cuota')}</label><input name="amount" type="number" step="any" min="0" required></div><div><label>${t('Cantidad de cuotas')}</label><input name="total" type="number" min="1" max="600" required></div></div>
+<div class="grid"><div><label>${t('Monto por cuota')}</label>${mi('amount','',{req:1,sym:CUR(wcur((AW()[0]||{}).id)).symbol})}</div><div><label>${t('Cantidad de cuotas')}</label><input name="total" type="number" min="1" max="600" required></div></div>
 <div class="grid"><div><label>${t('Fecha de la 1ª cuota')}</label><input name="start" type="date" value="${today()}" required></div><div><label>${t('Ya pagadas')}</label><input name="skip" type="number" min="0" value="0"></div></div>
 <label>${t('Frecuencia')}</label><select name="freq"><option value="mensual">${t('Mensual (mismo día de cada mes)')}</option><option value="semanal">${t('Semanal')}</option><option value="dias">${t('Cada X días')}</option></select>
 <div id="ev" hidden><label>${t('Cada cuántos días')}</label><input name="every" type="number" min="1" value="15"></div>
@@ -309,7 +328,7 @@ function openPlan(){const f=sheet(`<h2>${t('Nuevo plan de cuotas')}</h2><label>$
 <label>${t('Pagar con una caja de ahorro (opcional)')}</label><select name="goal_id"><option value="">${t('No, pagar con una billetera')}</option>${S.goals.map(g=>`<option value="${g.id}">🐷 ${esc(g.name)}</option>`).join('')}</select>
 <div id="dt" hidden><label class="ck"><input type="checkbox" name="dec_target"> ${t('Descontar también cada cuota de la meta de la caja')}</label></div>`,
 async b=>{const o={name:b.name,amount:+b.amount,total:+b.total,skip:+b.skip||0,start:b.start,freq:b.freq,every:+b.every||0,goal_id:+b.goal_id||null};o.dec_target=o.goal_id&&b.dec_target?1:0;if(!o.goal_id)o.wallet_id=+b.wallet_id;await api('plans','POST',o);load()},{submit:t('Crear plan')});
-f.onchange=()=>{const gs=!!f.elements.goal_id.value;f.querySelector('#ev').hidden=f.elements.freq.value!='dias';f.querySelector('#wb').hidden=gs;f.querySelector('#dt').hidden=!gs}}
+f.onchange=()=>{const gs=!!f.elements.goal_id.value,gg=gs&&S.goals.find(g=>g.id==+f.elements.goal_id.value);setSym(f.elements.amount,gg?gg.currency_id:wcur(f.elements.wallet_id.value));f.querySelector('#ev').hidden=f.elements.freq.value!='dias';f.querySelector('#wb').hidden=gs;f.querySelector('#dt').hidden=!gs}}
 
 // Billeteras
 function billeteras(){const x=today(),act=AW(),arc=S.wallets.filter(w=>w.archived);
@@ -337,7 +356,7 @@ function curForm(id){const c=S.currencies.find(c=>c.id==id),b=BASE();
 sheet(`<h2>${c?t('Editar moneda'):t('Nueva moneda')}</h2>${c&&c.base?`<p class="mut">${t('Es la moneda base: todas las cotizaciones se miden contra ella.')}</p>`:`<div class="grid"><div><label>${t('Código')}</label><input name="code" required maxlength="6" value="${esc(c?c.code:'')}" placeholder="USD" style="text-transform:uppercase"></div>
 <div><label>${t('Símbolo')}</label><input name="symbol" required maxlength="5" value="${esc(c?c.symbol:'')}" placeholder="US$"></div></div>`}
 <label>${t('Nombre')}</label><input name="name" required maxlength="30" value="${esc(c?c.name:'')}" placeholder="${t('Ej: Dólar')}">${c&&c.base?`<label>${t('Símbolo')}</label><input name="symbol" required maxlength="5" value="${esc(c.symbol)}">`:
-`<label>${t('Cotización: 1 unidad equivale a… ({0})',b.code)}</label><input name="rate" type="number" step="any" min="0" inputmode="decimal" required value="${c?c.rate:''}" placeholder="1500">`}`,
+`<label>${t('Cotización: 1 unidad equivale a… ({0})',b.code)}</label>${mi('rate',c?c.rate:'',{sym:b.symbol,dec:4,req:1,ph:b.symbol+'1.500'})}`}`,
 async x=>{await api(c?'currencies/'+id:'currencies',c?'PUT':'POST',{...x,rate:+x.rate||1});load()})}
 async function delCur(id){if(await ask(t('¿Borrar esta moneda?')))try{await api('currencies/'+id,'DELETE');load()}catch(e){toast(e.message)}}
 

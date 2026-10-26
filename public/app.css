@@ -89,7 +89,7 @@ body.auth #top,body.auth #side,body.auth #bnav{display:none}body.auth main{max-w
 
 .ov form.ask{max-width:400px}.ask{text-align:center}.ask p{font-size:16px;margin:8px 0 16px}.askic{font-size:38px;margin-top:4px}
 .cico{width:1.15em;height:1.15em;object-fit:contain;vertical-align:-.2em;border-radius:3px}.ic .cico,.pick .cico{width:24px;height:24px}
-.pick .padd,.pick .cpick{position:relative;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;cursor:pointer;font-size:20px;color:var(--mut)}
+.pick .padd,.pick .cpick{position:relative;margin:0;width:40px;height:40px;border-radius:11px;display:grid;place-items:center;cursor:pointer;font-size:20px;color:var(--mut)}
 .pick .padd{border:1.5px dashed var(--line)}.pick .padd:hover{border-color:var(--acc);color:var(--acc)}
 .pick .cpick{border:1.5px solid var(--line);background:conic-gradient(#f43f5e,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#a855f7,#f43f5e)}
 .pick .cpick::after{content:"";width:24px;height:24px;border-radius:50%;background:var(--cc);border:2px solid var(--card)}.pick .cpick:not(.on)::after{display:none}
