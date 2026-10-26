@@ -169,4 +169,5 @@ const EN={
 "Ícono":"Icon",
 "1 movimiento":"1 transaction","1 billetera":"1 wallet",
 "Fijar menú":"Pin menu","Ocultar menú":"Hide menu",
-"Agregar":"Add"};
+"Agregar":"Add",
+"Subir ícono (.ico o imagen)":"Upload icon (.ico or image)","Color personalizado":"Custom color","La imagen es muy grande (máx. 1 MB)":"The image is too big (max. 1 MB)","No se pudo leer la imagen":"Could not read the image","El ícono subido no es válido":"The uploaded icon is not valid"};

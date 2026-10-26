@@ -42,9 +42,10 @@ db.prepare("UPDATE movements SET to_wallet_id=? WHERE user_id=? AND type='transf
 db.prepare('UPDATE movements SET goal_cur=? WHERE user_id=? AND goal_id IS NOT NULL').run(ids.ars,u);db.prepare("UPDATE goals SET currency_id=?,currencies=? WHERE user_id=?").run(ids.ars,String(ids.ars),u);
 for(const r of db.prepare("SELECT DISTINCT type,category FROM movements WHERE user_id=? AND category<>'' AND type IN ('ingreso','egreso')").all(u))ensureCat(u,r.category,r.type)}
 db.exec('PRAGMA user_version=2;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+const cleanIcon=(v,d)=>{v=String(v||'');if(v.startsWith('data:image/'))return/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(v)&&v.length<=60000?v:null;return v.replace(/[<>&"']/g,'').slice(0,8)||d};
 const own=(tbl,id,uid)=>id?db.prepare(`SELECT * FROM ${tbl} WHERE id=? AND user_id=?`).get(id,uid):null;
 const goalCurs=g=>String(g.currencies||g.currency_id).split(',').filter(Boolean).map(Number);
-const app=express();app.set('trust proxy',1);app.use(express.json(),cp());
+const app=express();app.set('trust proxy',1);app.use(express.json({limit:'200kb'}),cp());
 // index.html pide app.js/app.css/i18n.js con ?v=<arranque>: Cloudflare hace que el navegador los guarde 4 h, así cada deploy fuerza la versión nueva
 const V=Date.now().toString(36),INDEX=fs.readFileSync('public/index.html','utf8').replace(/(app\.css|app\.js|i18n\.js)"/g,`$1?v=${V}"`);
 app.get(['/','/index.html'],(req,res)=>res.set('Cache-Control','no-cache').type('html').send(INDEX));app.use(express.static('public'));
@@ -102,22 +103,22 @@ db.prepare('DELETE FROM currencies WHERE id=?').run(o.id);res.json({})});
 
 // Billeteras: con movimientos no se borran (se archivan) ni cambian de moneda
 const walUsed=(uid,id)=>db.prepare('SELECT 1 FROM movements WHERE user_id=? AND (wallet_id=? OR to_wallet_id=?)').get(uid,id,id)||db.prepare('SELECT 1 FROM plans WHERE user_id=? AND wallet_id=?').get(uid,id);
-const walData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,40);return name&&own('currencies',+b.currency_id,uid)?{name,currency_id:+b.currency_id,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#2563EB',icon:String(b.icon||'👛').replace(/[<>&"']/g,'').slice(0,8)||'👛'}:null};
-app.post('/api/wallets',(req,res)=>{const w=walData(req.body,req.uid);if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
+const walData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,40);return name&&own('currencies',+b.currency_id,uid)?{name,currency_id:+b.currency_id,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#2563EB',icon:cleanIcon(b.icon,'👛')}:null};
+app.post('/api/wallets',(req,res)=>{const w=walData(req.body,req.uid);if(w&&!w.icon)return err(res,400,'El ícono subido no es válido');if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
 const s=db.prepare('SELECT COALESCE(MAX(sort),0)+1 s FROM wallets WHERE user_id=?').get(req.uid).s;
 res.json({id:db.prepare('INSERT INTO wallets(user_id,name,currency_id,color,icon,sort) VALUES(?,?,?,?,?,?)').run(req.uid,w.name,w.currency_id,w.color,w.icon,s).lastInsertRowid})});
-app.put('/api/wallets/:id',(req,res)=>{const o=own('wallets',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa billetera');const w=walData({...o,...req.body},req.uid);if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
+app.put('/api/wallets/:id',(req,res)=>{const o=own('wallets',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa billetera');const w=walData({...o,...req.body},req.uid);if(w&&!w.icon)return err(res,400,'El ícono subido no es válido');if(!w)return err(res,400,'Poné un nombre y elegí la moneda');
 if(w.currency_id!==o.currency_id&&walUsed(req.uid,o.id))return err(res,400,'La billetera ya tiene movimientos: no se le puede cambiar la moneda');
 db.prepare('UPDATE wallets SET name=?,currency_id=?,color=?,icon=?,archived=? WHERE id=?').run(w.name,w.currency_id,w.color,w.icon,req.body.archived===undefined?o.archived:(req.body.archived?1:0),o.id);res.json({})});
 app.delete('/api/wallets/:id',(req,res)=>{const o=own('wallets',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa billetera');
 if(walUsed(req.uid,o.id))return err(res,400,'La billetera tiene movimientos o cuotas: archivala en lugar de borrarla');db.prepare('DELETE FROM wallets WHERE id=?').run(o.id);res.json({})});
 
 // Categorías: los movimientos guardan el nombre; renombrar actualiza los movimientos de ese tipo
-const catData=b=>{const name=String(b.name||'').trim().slice(0,40);return name&&['ingreso','egreso'].includes(b.kind)?{name,kind:b.kind,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#5B4FE0',icon:String(b.icon||'🏷️').replace(/[<>&"']/g,'').slice(0,8)||'🏷️'}:null};
-app.post('/api/categories',(req,res)=>{const c=catData(req.body);if(!c)return err(res,400,'Poné un nombre a la categoría');
+const catData=b=>{const name=String(b.name||'').trim().slice(0,40);return name&&['ingreso','egreso'].includes(b.kind)?{name,kind:b.kind,color:/^#[0-9a-fA-F]{6}$/.test(b.color)?b.color:'#5B4FE0',icon:cleanIcon(b.icon,'🏷️')}:null};
+app.post('/api/categories',(req,res)=>{const c=catData(req.body);if(c&&!c.icon)return err(res,400,'El ícono subido no es válido');if(!c)return err(res,400,'Poné un nombre a la categoría');
 if(db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(req.uid,c.kind,c.name))return err(res,409,'Esa categoría ya existe');
 res.json({id:db.prepare('INSERT INTO categories(user_id,name,kind,color,icon) VALUES(?,?,?,?,?)').run(req.uid,c.name,c.kind,c.color,c.icon).lastInsertRowid})});
-app.put('/api/categories/:id',(req,res)=>{const o=own('categories',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa categoría');const c=catData({...req.body,kind:o.kind});if(!c)return err(res,400,'Poné un nombre a la categoría');
+app.put('/api/categories/:id',(req,res)=>{const o=own('categories',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa categoría');const c=catData({...req.body,kind:o.kind});if(c&&!c.icon)return err(res,400,'El ícono subido no es válido');if(!c)return err(res,400,'Poné un nombre a la categoría');
 if(c.name!==o.name&&db.prepare('SELECT 1 FROM categories WHERE user_id=? AND kind=? AND name=?').get(req.uid,o.kind,c.name))return err(res,409,'Esa categoría ya existe');
 db.exec('BEGIN');db.prepare('UPDATE categories SET name=?,color=?,icon=? WHERE id=?').run(c.name,c.color,c.icon,o.id);db.prepare('UPDATE movements SET category=? WHERE user_id=? AND type=? AND category=?').run(c.name,req.uid,o.kind,o.name);db.exec('COMMIT');res.json({})});
 app.delete('/api/categories/:id',(req,res)=>{db.prepare('DELETE FROM categories WHERE id=? AND user_id=?').run(+req.params.id,req.uid);res.json({})});
