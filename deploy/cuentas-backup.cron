@@ -1,0 +1,2 @@
+# /etc/cron.d/cuentas-backup: todos los días 06:00 UTC (03:00 Argentina)
+0 6 * * * root /usr/local/bin/cuentas-backup >> /var/log/cuentas-backup.log 2>&1
