@@ -15,6 +15,8 @@ if(!db.prepare("SELECT 1 FROM pragma_table_info('plans') WHERE name='dec_target'
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_cuota ON movements(plan_id,cuota_n) WHERE type='egreso' AND plan_id IS NOT NULL");
 // v1: los ajustes viejos pasan a ser ingresos; desde acá 'ajuste' = corrección de saldo
 if(!db.prepare('PRAGMA user_version').get().user_version)db.exec("UPDATE movements SET type='ingreso',category=CASE WHEN category='' THEN 'Sueldo' ELSE category END WHERE type='ajuste';PRAGMA user_version=1");
+if(!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='settings'").get())db.exec("ALTER TABLE users ADD COLUMN settings TEXT DEFAULT '{}'");
+const SET={lang:['es','en'],theme:['claro','oscuro','medianoche','crema']},getSet=uid=>{try{return JSON.parse(db.prepare('SELECT settings FROM users WHERE id=?').get(uid).settings||'{}')}catch{return{}}};
 const app=express();app.set('trust proxy',1);app.use(express.json(),cp());app.use(express.static('public'));
 const err=(res,c,m)=>res.status(c).json({error:m});
 const login=(res,u)=>res.cookie('tk',jwt.sign({uid:u.id},SECRET,{expiresIn:'30d'}),{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='1',maxAge:30*864e5}).json({username:u.username});
@@ -27,7 +29,23 @@ if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash))return err(res,
 app.post('/api/logout',(q,res)=>res.clearCookie('tk').json({}));
 app.use('/api',(req,res,next)=>{try{const p=jwt.verify(req.cookies.tk,SECRET);req.uid=p.uid;next()}catch{err(res,401,'No autenticado')}});
 app.get('/api/me',(req,res)=>res.json(db.prepare('SELECT username FROM users WHERE id=?').get(req.uid)));
-app.get('/api/data',(req,res)=>res.json({movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(req.uid),goals:db.prepare('SELECT * FROM goals WHERE user_id=?').all(req.uid),plans:db.prepare('SELECT * FROM plans WHERE user_id=?').all(req.uid)}));
+app.put('/api/settings',(req,res)=>{const s=getSet(req.uid);for(const[k,v]of Object.entries(req.body||{}))if(SET[k]&&SET[k].includes(v))s[k]=v;
+db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify(s),req.uid);res.json(s)});
+const checkPw=(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash)){err(res,401,'La contraseña actual no es correcta');return null}return u};
+app.put('/api/account',limit,(req,res)=>{const u=checkPw(req,res);if(!u)return;const b=req.body;
+if(b.username!==undefined){const n=String(b.username).toLowerCase();if(!/^[\w.-]{3,30}$/.test(n))return err(res,400,'El usuario debe tener entre 3 y 30 caracteres (letras, números, punto, guion)');
+try{db.prepare('UPDATE users SET username=? WHERE id=?').run(n,u.id)}catch{return err(res,409,'Ese usuario ya existe')}}
+if(b.new_password!==undefined){if(String(b.new_password).length<8)return err(res,400,'La contraseña nueva debe tener al menos 8 caracteres');db.prepare('UPDATE users SET hash=? WHERE id=?').run(bcrypt.hashSync(String(b.new_password),10),u.id)}
+res.json(db.prepare('SELECT username FROM users WHERE id=?').get(u.id))});
+// Formatear: borra lo que el usuario elija. Borrar cajas arrastra sus movimientos y los planes que se pagan con ellas.
+app.post('/api/reset',limit,(req,res)=>{const u=checkPw(req,res);if(!u)return;const w=new Set(Array.isArray(req.body.what)?req.body.what:[]),q=s=>db.prepare(s).run(u.id);
+if(!w.size)return err(res,400,'Elegí qué querés borrar');db.exec('BEGIN');try{
+if(w.has('movimientos'))q('DELETE FROM movements WHERE user_id=?');
+if(w.has('cuotas'))q('DELETE FROM plans WHERE user_id=?');
+if(w.has('cajas')){q('DELETE FROM movements WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM plans WHERE user_id=? AND goal_id IS NOT NULL');q('DELETE FROM goals WHERE user_id=?')}
+if(w.has('configuracion'))q("UPDATE users SET settings='{}' WHERE id=?");
+db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');return err(res,500,'No se pudo formatear')}res.json({})});
+app.get('/api/data',(req,res)=>res.json({username:db.prepare('SELECT username FROM users WHERE id=?').get(req.uid).username,settings:getSet(req.uid),movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(req.uid),goals:db.prepare('SELECT * FROM goals WHERE user_id=?').all(req.uid),plans:db.prepare('SELECT * FROM plans WHERE user_id=?').all(req.uid)}));
 app.post('/api/goals',(req,res)=>{const n=String(req.body.name||'').trim().slice(0,60);if(!n)return err(res,400,'Falta el nombre');
 db.prepare('INSERT INTO goals(user_id,name,target) VALUES(?,?,?)').run(req.uid,n,Math.max(0,+req.body.target||0));res.json({})});
 app.delete('/api/goals/:id',(req,res)=>{if(db.prepare('SELECT 1 FROM plans WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta está asociada a un plan de cuotas');if(db.prepare('SELECT 1 FROM movements WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta tiene aportes; borralos primero');
