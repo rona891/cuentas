@@ -44,7 +44,10 @@ for(const r of db.prepare("SELECT DISTINCT type,category FROM movements WHERE us
 db.exec('PRAGMA user_version=2;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 const own=(tbl,id,uid)=>id?db.prepare(`SELECT * FROM ${tbl} WHERE id=? AND user_id=?`).get(id,uid):null;
 const goalCurs=g=>String(g.currencies||g.currency_id).split(',').filter(Boolean).map(Number);
-const app=express();app.set('trust proxy',1);app.use(express.json(),cp());app.use(express.static('public'));
+const app=express();app.set('trust proxy',1);app.use(express.json(),cp());
+// index.html pide app.js/app.css/i18n.js con ?v=<arranque>: Cloudflare hace que el navegador los guarde 4 h, así cada deploy fuerza la versión nueva
+const V=Date.now().toString(36),INDEX=fs.readFileSync('public/index.html','utf8').replace(/(app\.css|app\.js|i18n\.js)"/g,`$1?v=${V}"`);
+app.get(['/','/index.html'],(req,res)=>res.set('Cache-Control','no-cache').type('html').send(INDEX));app.use(express.static('public'));
 const err=(res,c,m)=>res.status(c).json({error:m});
 const login=(res,u)=>res.cookie('tk',jwt.sign({uid:u.id},SECRET,{expiresIn:'30d'}),{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='1',maxAge:30*864e5}).json({username:u.username});
 const tries={};const limit=(req,res,next)=>{const k=req.ip,t=Date.now();tries[k]=(tries[k]||[]).filter(x=>t-x<9e5);if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos minutos');tries[k].push(t);next()};
