@@ -16,7 +16,7 @@ db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_cuota ON movements(plan_id,cuota_n
 // v1: los ajustes viejos pasan a ser ingresos; desde acá 'ajuste' = corrección de saldo
 if(!db.prepare('PRAGMA user_version').get().user_version)db.exec("UPDATE movements SET type='ingreso',category=CASE WHEN category='' THEN 'Sueldo' ELSE category END WHERE type='ajuste';PRAGMA user_version=1");
 if(!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='settings'").get())db.exec("ALTER TABLE users ADD COLUMN settings TEXT DEFAULT '{}'");
-const SET={lang:['es','en'],theme:['claro','oscuro','medianoche','crema'],totals:['ambos','separado','una']},getSet=uid=>{try{return JSON.parse(db.prepare('SELECT settings FROM users WHERE id=?').get(uid).settings||'{}')}catch{return{}}};
+const SET={lang:['es','en'],theme:['claro','oscuro','medianoche','crema'],totals:['ambos','separado','una'],tour:['nuevo','ofrecer','hecho'],pasos:['on','off']},getSet=uid=>{try{return JSON.parse(db.prepare('SELECT settings FROM users WHERE id=?').get(uid).settings||'{}')}catch{return{}}};
 // v2: monedas, billeteras y categorías propias de cada usuario; cajas con una o más monedas.
 // En movements: amount va en la moneda de wallet_id (o de goal_cur si no hay billetera); amount2 es el otro lado
 // cuando hay cambio de moneda (to_wallet_id en pases, goal_cur en aportes/retiros, goal_cur2 en 'cambio' dentro de una caja).
@@ -52,12 +52,16 @@ if(db.prepare('PRAGMA user_version').get().user_version<3){db.exec('BEGIN');try{
 db.prepare("UPDATE movements SET importance=CASE importance WHEN 'Esencial' THEN 'Necesario' WHEN 'Necesario' THEN 'Útil' WHEN 'Prescindible' THEN 'Gusto' ELSE importance END WHERE user_id=?").run(u);
 seed(u,{pri:1});for(const r of db.prepare("SELECT DISTINCT importance FROM movements WHERE user_id=? AND importance<>''").all(u))ensurePrio(u,r.importance)}
 db.exec('PRAGMA user_version=3;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
+// v4: a los usuarios que ya existían se les ofrece una vez el recorrido guiado (los nuevos arrancan con tour='nuevo')
+if(db.prepare('PRAGMA user_version').get().user_version<4){db.exec('BEGIN');try{for(const r of db.prepare('SELECT id,settings FROM users').all()){let s;try{s=JSON.parse(r.settings||'{}')}catch{s={}}
+if(!s.tour){s.tour='ofrecer';db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify(s),r.id)}}
+db.exec('PRAGMA user_version=4;COMMIT')}catch(e){db.exec('ROLLBACK');throw e}}
 const cleanIcon=(v,d)=>{v=String(v||'');if(v.startsWith('data:image/'))return/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(v)&&v.length<=60000?v:null;return v.replace(/[<>&"']/g,'').slice(0,8)||d};
 const own=(tbl,id,uid)=>id?db.prepare(`SELECT * FROM ${tbl} WHERE id=? AND user_id=?`).get(id,uid):null;
 const goalCurs=g=>String(g.currencies||g.currency_id).split(',').filter(Boolean).map(Number);
 const app=express();app.set('trust proxy',1);app.use(express.json({limit:'200kb'}),cp());
 // index.html pide app.js/app.css/i18n.js con ?v=<arranque>: Cloudflare hace que el navegador los guarde 4 h, así cada deploy fuerza la versión nueva
-const V=Date.now().toString(36),INDEX=fs.readFileSync('public/index.html','utf8').replace(/(app\.css|app\.js|i18n\.js)"/g,`$1?v=${V}"`);
+const V=Date.now().toString(36),INDEX=fs.readFileSync('public/index.html','utf8').replace(/(app\.css|app\.js|i18n\.js|tour\.js)"/g,`$1?v=${V}"`);
 app.get(['/','/index.html'],(req,res)=>res.set('Cache-Control','no-cache').type('html').send(INDEX));app.use(express.static('public'));
 const err=(res,c,m)=>res.status(c).json({error:m});
 const login=(res,u)=>res.cookie('tk',jwt.sign({uid:u.id},SECRET,{expiresIn:'30d'}),{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='1',maxAge:30*864e5}).json({username:u.username});
@@ -68,13 +72,15 @@ if(tries[k].length>=10)return err(res,429,'Demasiados intentos, esperá unos min
 app.post('/api/register',limit,(req,res)=>{if(process.env.ALLOW_REGISTER==='0')return err(res,403,'Registro deshabilitado');
 const{username,password}=req.body;if(!/^[\w.-]{3,30}$/.test(username||'')||(password||'').length<8)return err(res,400,'Usuario (3-30 caracteres) y contraseña (mín. 8)');
 let r;try{r=db.prepare('INSERT INTO users(username,hash) VALUES(?,?)').run(username.toLowerCase(),bcrypt.hashSync(password,10))}catch{return err(res,409,'Ese usuario ya existe')}
-seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1,pri:1});login(res,{id:r.lastInsertRowid,username})});
+seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1,pri:1});db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify({tour:'nuevo',pasos:'on'}),r.lastInsertRowid);login(res,{id:r.lastInsertRowid,username})});
 app.post('/api/login',limit,(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(req.body.username||'').toLowerCase());
 if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash))return err(res,401,'Usuario o contraseña incorrectos');login(res,u)});
 app.post('/api/logout',(q,res)=>res.clearCookie('tk').json({}));
 app.use('/api',(req,res,next)=>{try{const p=jwt.verify(req.cookies.tk,SECRET);req.uid=p.uid;next()}catch{err(res,401,'No autenticado')}});
 app.get('/api/me',(req,res)=>res.json(db.prepare('SELECT username FROM users WHERE id=?').get(req.uid)));
 app.put('/api/settings',(req,res)=>{const s=getSet(req.uid);for(const[k,v]of Object.entries(req.body||{}))if(SET[k]&&SET[k].includes(v))s[k]=v;
+// pv: pasos de "Primeros pasos" que no se deducen de los datos (secciones visitadas, visita guiada hecha)
+if(req.body&&typeof req.body.pv=='string'&&/^[a-z,]{0,80}$/.test(req.body.pv))s.pv=req.body.pv;
 if(req.body&&req.body.tcur!==undefined&&own('currencies',+req.body.tcur,req.uid))s.tcur=+req.body.tcur;
 db.prepare('UPDATE users SET settings=? WHERE id=?').run(JSON.stringify(s),req.uid);res.json(s)});
 const checkPw=(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.uid);if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash)){err(res,401,'La contraseña actual no es correcta');return null}return u};
@@ -150,9 +156,9 @@ app.delete('/api/priorities/:id',(req,res)=>{db.prepare('DELETE FROM priorities 
 // Cajas: moneda principal (meta y total) + monedas habilitadas
 const goalData=(b,uid)=>{const name=String(b.name||'').trim().slice(0,60),cur=+b.currency_id,cs=[...new Set([cur,...(Array.isArray(b.currencies)?b.currencies.map(Number):[])])];
 return name&&cs.every(c=>own('currencies',c,uid))?{name,target:Math.max(0,+b.target||0),cur,cs:cs.join(',')}:null};
-const goalBal=(uid,gid,cur,skip)=>db.prepare("SELECT COALESCE(SUM(CASE WHEN type='ahorro' AND goal_cur=? THEN COALESCE(amount2,amount) WHEN type IN ('egreso','cambio') AND goal_cur=? THEN -amount WHEN type='cambio' AND goal_cur2=? THEN amount2 ELSE 0 END),0) t FROM movements WHERE user_id=? AND goal_id=? AND id<>?").get(cur,cur,cur,uid,gid,skip||0).t;
+const goalBal=(uid,gid,cur,skip)=>db.prepare("SELECT COALESCE(SUM(CASE WHEN type='ahorro' AND goal_cur=? THEN COALESCE(amount2,amount) WHEN type IN ('egreso','cambio') AND goal_cur=? THEN -amount WHEN type='cambio' AND goal_cur2=? THEN amount2 WHEN type='ajuste' AND goal_cur=? THEN amount ELSE 0 END),0) t FROM movements WHERE user_id=? AND goal_id=? AND id<>?").get(cur,cur,cur,cur,uid,gid,skip||0).t;
 app.post('/api/goals',(req,res)=>{const g=goalData(req.body,req.uid);if(!g)return err(res,400,'Poné un nombre y elegí la moneda');
-db.prepare('INSERT INTO goals(user_id,name,target,currency_id,currencies) VALUES(?,?,?,?,?)').run(req.uid,g.name,g.target,g.cur,g.cs);res.json({})});
+res.json({id:db.prepare('INSERT INTO goals(user_id,name,target,currency_id,currencies) VALUES(?,?,?,?,?)').run(req.uid,g.name,g.target,g.cur,g.cs).lastInsertRowid})});
 app.delete('/api/goals/:id',(req,res)=>{if(db.prepare('SELECT 1 FROM plans WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta está asociada a un plan de cuotas');if(db.prepare('SELECT 1 FROM movements WHERE user_id=? AND goal_id=?').get(req.uid,req.params.id))return err(res,400,'La meta tiene aportes; borralos primero');
 db.prepare('DELETE FROM goals WHERE id=? AND user_id=?').run(req.params.id,req.uid);res.json({})});
 app.put('/api/goals/:id',(req,res)=>{const o=own('goals',+req.params.id,req.uid);if(!o)return err(res,404,'No existe esa caja');const g=goalData(req.body,req.uid);if(!g)return err(res,400,'Poné un nombre y elegí la moneda');
@@ -161,20 +167,20 @@ return err(res,400,'No podés quitar una moneda que la caja ya usó; pasá ese s
 db.prepare('UPDATE goals SET name=?,target=?,currency_id=?,currencies=? WHERE id=?').run(g.name,g.target,g.cur,g.cs,o.id);res.json({})});
 app.post('/api/movements',(req,res)=>saveMv(req,res));
 app.put('/api/movements/:id',(req,res)=>saveMv(req,res,+req.params.id));
-function saveMv(req,res,id){const b=req.body,u=req.uid,T=b.type,a=+b.amount,cj=T==='egreso'&&b.goal_id;
+function saveMv(req,res,id){const b=req.body,u=req.uid,T=b.type,a=+b.amount,cj=T==='egreso'&&b.goal_id,aj=T==='ajuste'&&b.goal_id;
 if(!['ingreso','egreso','ahorro','transferencia','ajuste','cambio'].includes(T)||!/^\d{4}-\d\d-\d\d$/.test(b.date)||!isFinite(a)||a===0)return err(res,400,'Datos inválidos');
 if(a<0&&T!=='ahorro'&&T!=='ajuste')return err(res,400,'El monto debe ser positivo');
 const old=id?own('movements',id,u):null;if(id&&!old)return err(res,404,'No existe ese movimiento');
 const other=()=>{const v=+b.amount2;return isFinite(v)&&v!==0&&Math.sign(v)===Math.sign(a)?v:NaN};let w=null,w2=null,g=null,gc=null,gc2=null,a2=null;
-if(T!=='cambio'&&!cj){w=own('wallets',+b.wallet_id,u);if(!w)return err(res,400,'Elegí una billetera')}
+if(T!=='cambio'&&!cj&&!aj){w=own('wallets',+b.wallet_id,u);if(!w)return err(res,400,'Elegí una billetera')}
 if(T==='transferencia'){w2=own('wallets',+b.to_wallet_id,u);if(!w2||w2.id===w.id)return err(res,400,'Elegí dos billeteras distintas');
 if(w2.currency_id!==w.currency_id&&isNaN(a2=other()))return err(res,400,'Indicá cuánto recibís en la otra moneda')}
-if(T==='ahorro'||cj||T==='cambio'){g=own('goals',+b.goal_id,u);if(!g)return err(res,400,'Elegí una caja de ahorro');const cs=goalCurs(g);
+if(T==='ahorro'||cj||aj||T==='cambio'){g=own('goals',+b.goal_id,u);if(!g)return err(res,400,'Elegí una caja de ahorro');const cs=goalCurs(g);
 gc=+b.goal_cur||g.currency_id;if(!cs.includes(gc))return err(res,400,'Esa moneda no está habilitada en la caja');
 if(T==='ahorro'&&gc!==w.currency_id&&isNaN(a2=other()))return err(res,400,'Indicá el monto en la moneda de la caja');
 if(T==='cambio'){gc2=+b.goal_cur2;if(!cs.includes(gc2)||gc2===gc)return err(res,400,'Elegí dos monedas distintas de la caja');if(isNaN(a2=other()))return err(res,400,'Indicá cuánto recibís en la otra moneda')}}
 // Lo que sale de la caja (retiro o cambio de moneda) no puede dejarla en negativo en esa moneda
-const out=T==='ahorro'&&a<0?-(a2??a):T==='cambio'?a:0;
+const out=T==='ahorro'&&a<0?-(a2??a):T==='cambio'?a:aj&&a<0?-a:0;
 if(out>0&&goalBal(u,g.id,gc,id)-out<-0.005)return err(res,400,'La caja no tiene saldo suficiente en esa moneda');
 const cat=String(b.category||'').trim().slice(0,40),imp=T==='egreso'?String(b.importance||'').trim().slice(0,30):'';ensureCat(u,cat,T);ensurePrio(u,imp);
 const v=[b.date,T,a,a2,cat,String(b.detail||'').slice(0,120),imp,w&&w.id,w2&&w2.id,g&&g.id,gc,gc2,cj&&b.dec_target?1:0];

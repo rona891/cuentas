@@ -58,7 +58,7 @@ const bal=(w,upTo)=>S.movs.reduce((s,x)=>{if(x.date>upTo)return s;const a=x.amou
 if(x.type=='transferencia')return s+(x.to_wallet_id==w?x.amount2??a:0)-(x.wallet_id==w?a:0);if(x.wallet_id!=w)return s;
 return s+(x.type=='ingreso'||x.type=='ajuste'?a:-a)},0);
 function gbal(g,upTo='9999'){const r=Object.fromEntries(gcs(g).map(c=>[c,0]));for(const x of S.movs){if(x.goal_id!=g.id||x.date>upTo)continue;const c=x.goal_cur||g.currency_id;
-if(x.type=='ahorro')r[c]=(r[c]||0)+(x.amount2??x.amount);else if(x.type=='egreso')r[c]=(r[c]||0)-x.amount;else if(x.type=='cambio'){r[c]=(r[c]||0)-x.amount;r[x.goal_cur2]=(r[x.goal_cur2]||0)+x.amount2}}return r}
+if(x.type=='ahorro')r[c]=(r[c]||0)+(x.amount2??x.amount);else if(x.type=='egreso')r[c]=(r[c]||0)-x.amount;else if(x.type=='cambio'){r[c]=(r[c]||0)-x.amount;r[x.goal_cur2]=(r[x.goal_cur2]||0)+x.amount2}else if(x.type=='ajuste')r[c]=(r[c]||0)+x.amount}return r}
 const curSum=o=>Object.entries(o).filter(([,v])=>Math.abs(v)>0.004);
 const tot=(o,to)=>curSum(o).reduce((s,[c,v])=>s+conv(v,c,to),0);
 const breakdown=o=>curSum(o).map(([c,v])=>money(v,c)).join(' · ');
@@ -71,7 +71,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('.pw .eye');if(!b
 b.innerHTML=show?EYE_OFF:EYE_ON;b.title=b.ariaLabel=show?t('Ocultar contraseña'):t('Mostrar contraseña');i.focus()});
 // Carga, login y estructura
 async function load(){try{Object.assign(S,await api('data'));setLang(S.settings.lang||'es');applyTheme(S.settings.theme||'crema');
-if(await genCuotas()>0)Object.assign(S,await api('data'));document.body.classList.remove('auth');render()}catch(e){if(e.st==401)loginView();else toast(e.message)}}
+if(await genCuotas()>0)Object.assign(S,await api('data'));document.body.classList.remove('auth');render();tourBoot()}catch(e){if(e.st==401)loginView();else toast(e.message)}}
 function loginView(){document.body.classList.add('auth');['#top','#side','#bnav'].forEach(s=>$(s).innerHTML='');
 $('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div style="font-size:44px">💸</div><h1 style="margin:6px 0 2px">FNz</h1><div class="mut">${t('Tus finanzas, claras.')}</div></div>
 <form class="card" onsubmit="auth(event)"><label>${t('Usuario')}</label><input name="u" autocomplete="username" required>
@@ -79,24 +79,24 @@ $('#app').innerHTML=`<div style="text-align:center;margin:40px 0 18px"><div styl
 <button class="p">${S.reg?t('Crear cuenta'):t('Entrar')}</button><button type="button" class="l" style="width:100%" onclick="S.reg=!S.reg;loginView()">${S.reg?t('Ya tengo cuenta'):t('Crear una cuenta')}</button></form>
 <div class="seg" style="max-width:200px;margin:12px auto">${[['es','Español'],['en','English']].map(([k,n])=>`<button type="button" class="${L==k?'on':''}" onclick="setLang('${k}');loginView()">${n}</button>`).join('')}</div>`}
 async function auth(e){e.preventDefault();const f=e.target;try{await api(S.reg?'register':'login','POST',{username:f.u.value,password:f.p.value});load()}catch(x){$('#e').textContent=x.message}}
-async function logout(){await api('logout','POST').catch(()=>{});menu(0);Object.assign(S,{movs:[],goals:[],plans:[],view:'res',goal:null});loginView()}
+async function logout(){await api('logout','POST').catch(()=>{});menu(0);tourEnd(1);TB=false;Object.assign(S,{movs:[],goals:[],plans:[],view:'res',goal:null});loginView()}
 const MAIN=[['res','Resumen','📊'],['sem','Semanas','🗓️'],['aho','Ahorros','🐷'],['cuo','Cuotas','📆']],MENU=[['bil','Billeteras','👛'],['mon','Monedas','💱'],['cat','Categorías','🏷️'],['pri','Prioridades','🚦'],['cfg','Configuración','⚙️'],['cta','Cuenta','👤']];
-function go(v){S.view=v;S.goal=null;menu(0);render()}
+function go(v){S.view=v;S.goal=null;menu(0);render();if(v=='sem'||v=='cat')pvAdd(v)}
 function menu(o){$('#side').classList.toggle('open',!!o);const s=$('#scrim');if(o&&!s){const d=document.createElement('div');d.id='scrim';d.onclick=()=>menu(0);document.body.appendChild(d)}else if(!o&&s)s.remove()}
 // PC: el panel se puede esconder; escondido, ☰ lo muestra flotando al pasar el mouse y con clic lo vuelve a fijar
 function setCol(c){document.body.classList.toggle('collapsed',c);store('side',c?'0':'1');$('#side').classList.remove('peek');$('#side').innerHTML=side()}
 function initSide(){const sd=$('#side'),b=$('#dburger');document.body.classList.toggle('collapsed',store('side')=='0');
 b.onclick=()=>setCol(false);b.onmouseenter=()=>{if(document.body.classList.contains('collapsed')){sd.innerHTML=side();sd.classList.add('peek')}};sd.onmouseleave=()=>sd.classList.remove('peek')}
-function side(){const it=(c)=>([k,n,i])=>`<button class="it ${c}${S.view==k?' on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`;
+function side(){const it=c=>([k,n,i])=>`<button class="it ${c}${S.view==k?' on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`;
 const col=document.body.classList.contains('collapsed');
 return`<button class="pin" onclick="setCol(${!col})" title="${col?t('Fijar menú'):t('Ocultar menú')}" aria-label="${col?t('Fijar menú'):t('Ocultar menú')}">${col?'»':'«'}</button><div class="brand">💸 FNz</div><div class="who">${esc(S.username)}</div><button class="p add main-only" onclick="openForm()">＋ ${t('Cargar movimiento')}</button>
-<div class="sec main-only">${t('Principal')}</div>${MAIN.map(it('main-only')).join('')}<div class="sec">${t('Menú')}</div>${MENU.map(it('')).join('')}
+<div class="sec main-only">${t('Principal')}</div>${MAIN.map(it('main-only')).join('')}<div class="sec">${t('Menú')}</div>${MENU.map(it('mn')).join('')}
 <div style="flex:1"></div><button class="it" onclick="logout()"><span>🚪</span>${t('Cerrar sesión')}</button>`}
 const VIEWS={res:()=>resumen(),sem:()=>semana(),cuo:()=>cuotas(),bil:()=>billeteras(),mon:()=>monedas(),cat:()=>categorias(),pri:()=>prioridades(),cfg:()=>config(),cta:()=>cuenta(),aho:()=>S.goal?meta():ahorros()};
 function render(keep){const v=S.view;
 $('#top').innerHTML=`<button class="burger" onclick="menu(1)" aria-label="${t('Menú')}">☰</button><span class="brand">${t((MAIN.concat(MENU).find(x=>x[0]==v)||MAIN[0])[1])}</span>`;
 $('#bnav').innerHTML=MAIN.map(([k,n,i])=>`<button class="${v==k?'on':''}" onclick="go('${k}')"><span>${i}</span>${t(n)}</button>`).join('')+`<button class="add" onclick="openForm()"><span>＋</span>${t('Cargar')}</button>`;
-$('#side').innerHTML=side();$('#app').innerHTML=(VIEWS[v]||VIEWS.res)();if(!keep)scrollTo(0,0)}
+$('#side').innerHTML=side();$('#app').innerHTML=(VIEWS[v]||VIEWS.res)();const h=$('#app h1');if(h)h.insertAdjacentHTML('beforeend',hqB());if(!keep)scrollTo(0,0)}
 
 // Resumen
 const dd=(a,b)=>Math.round((D(b)-D(a))/864e5)+1,fdd=s=>fdate(s,{day:'numeric',month:'short',year:'numeric'});
@@ -118,7 +118,7 @@ const pe=F&&To?sum(S.movs.filter(m=>m.date>=addD(F,-dd(F,To))&&m.date<=addD(F,-1
 const dow=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'],byd=grp(E.map(m=>({...m,d:t(dow[D(m.date).getDay()])})),'d')[0];
 const P=[['','Todo'],['m','Este mes'],['pm','Mes pasado'],['y','Este año']],pk=k=>{const[a,b]=perR(k);return a==F&&b==To};
 const kpi=(l,h,v,c)=>`<div class="card kpi" style="--k:${c}"><div class="mut">${tip(t(l),t(h))}</div><div class="v" style="color:${c}">${v}</div></div>`,mo=v=>money(v,tc);
-return`<div class="row"><h1>${t('Resumen')}</h1><button class="l lk" onclick="openExport()">⬇ ${t('Exportar Excel')}</button></div>
+return`${onbCards()}<div class="row"><h1>${t('Resumen')}</h1><button class="l lk" onclick="openExport()">⬇ ${t('Exportar Excel')}</button></div>
 <div class="top4" style="margin-bottom:10px">${heroTotals()}${AW().map(w=>walletCard(w,bal(w.id,x))).join('')}</div>
 <h2>${t('Análisis')}${multi()?` <span class="tag">${t('en {0}',CUR(tc).code)}</span>`:''}</h2><div class="perbar"><div class="seg">${P.map(([k,n])=>`<button type="button" class="${pk(k)?'on':''}" onclick="per('${k}')">${t(n)}</button>`).join('')}</div>
 <div><label>${t('Desde')}</label><input type="date" value="${F}" onchange="S.from=this.value;render(1)"></div><div><label>${t('Hasta')}</label><input type="date" value="${To}" onchange="S.to=this.value;render(1)"></div></div>
@@ -135,7 +135,7 @@ function corr(id){const w=WAL(id),cur=bal(id,today());sheet(`<h2>${t('Corregir s
 await api('movements','POST',{type:'ajuste',amount:d,date:today(),wallet_id:id,detail:t('Corrección de saldo')});load()})}
 
 // Semanas y lista de movimientos
-function semana(){const a=S.week,b=addD(a,6),tc=TCUR(),W=S.movs.filter(x=>x.date>=a&&x.date<=b),ing=sum(W,'ingreso'),egr=sum(W,'egreso'),aho=sum(W,'ahorro'),aj=sum(W,'ajuste'),egW=sum(W.filter(x=>!x.goal_id),'egreso'),f=s=>fdate(s,{day:'numeric',month:'short'}),mo=v=>money(v,tc);
+function semana(){const a=S.week,b=addD(a,6),tc=TCUR(),W=S.movs.filter(x=>x.date>=a&&x.date<=b),ing=sum(W,'ingreso'),egr=sum(W,'egreso'),aho=sum(W,'ahorro'),aj=sum(W.filter(x=>!x.goal_id),'ajuste'),egW=sum(W.filter(x=>!x.goal_id),'egreso'),f=s=>fdate(s,{day:'numeric',month:'short'}),mo=v=>money(v,tc);
 return`<h1>${t('Semana')}</h1><div class="cols"><div><div class="row card" style="padding:8px"><button class="l" onclick="S.week=addD(S.week,-7);render(1)">‹ ${t('Anterior')}</button><b>${f(a)} – ${f(b)}</b><button class="l" onclick="S.week=addD(S.week,7);render(1)">${t('Siguiente')} ›</button></div>
 <div class="card hero"><div class="lbl">${tip(t('Resultado de la semana'),t('Cuánto cambió tu disponible: ingresos y correcciones menos gastos y ahorro de esta semana. No cuenta lo pagado con cajas de ahorro.'))}</div><div class="big">${mo(ing+aj-egW-aho)}</div>
 <div class="sub"><span>${t('Ingresos')} <b>${mo(ing)}</b></span><span>${t('Gastos')} <b>${mo(egr)}</b></span><span>${t('Ahorro')} <b>${mo(aho)}</b></span>${aj?`<span>${t('Correcciones')} <b>${mo(aj)}</b></span>`:''}</div></div>
@@ -144,7 +144,7 @@ ${filtros()}</div><div><h2>${t('Movimientos')}</h2><div id="lst">${lista()}</div
 async function del(id){if(await ask(t('¿Borrar este movimiento?'))){try{await api('movements/'+id,'DELETE');load()}catch(e){toast(e.message)}}}
 function edit(id){const x=S.movs.find(x=>x.id==id);if(x)openForm(null,null,x)}
 function mvRow(x){const g=S.goals.find(g=>g.id==x.goal_id),ret=x.type=='ahorro'&&x.amount<0,k=ret?'retiro':x.type,inCaja=S.view=='aho'&&S.goal,gc=x.goal_cur||(g&&g.currency_id);
-const sg=x.type=='transferencia'||x.type=='cambio'?'':inCaja?(x.type=='ahorro'&&x.amount>0?'+':'−'):(x.type=='ingreso'||(x.type=='ajuste'&&x.amount>0)||ret)?'+':'−';
+const sg=x.type=='transferencia'||x.type=='cambio'?'':inCaja?((x.type=='ahorro'||x.type=='ajuste')&&x.amount>0?'+':'−'):(x.type=='ingreso'||(x.type=='ajuste'&&x.amount>0)||ret)?'+':'−';
 const gn=g?'🐷 '+esc(g.name):'',wn=x.wallet_id?wIc(x.wallet_id)+' '+esc(WN(x.wallet_id)):'';
 const tags=x.type=='cambio'?[gn,CUR(x.goal_cur).code+' → '+CUR(x.goal_cur2).code]:g?(x.type=='egreso'?[t('desde {0}',gn)]:ret?[gn,'→ '+wn]:[wn,'→ '+gn]):[x.type=='transferencia'?wn+' → '+wIc(x.to_wallet_id)+' '+esc(WN(x.to_wallet_id)):wn,x.category&&catH(x.category),x.importance&&prH(x.importance)];
 // Con cambio de moneda se muestran los dos lados: lo que sale y lo que entra
@@ -194,8 +194,14 @@ ${g.target?`<div class="bar" style="background:#fff3"><i style="width:${s.pct}%;
 ${cs.length>1?`<button class="p ghost" style="margin-bottom:10px" onclick="openForm('cambio',${g.id})">💱 ${t('Cambiar moneda dentro de la caja')}</button>`:''}
 <div class="kpis"><div class="card kpi" style="--k:var(--sv)"><div class="mut">${tip(t('Promedio semanal'),t('Aportes divididos por las semanas desde el primero.'))}</div><div class="v">${mo(s.avg)}</div></div><div class="card kpi" style="--k:var(--acc)"><div class="mut">${tip(t('Aportes'),t('Cantidad de veces que aportaste.'))}</div><div class="v">${s.dep.length}</div></div>
 <div class="card kpi" style="--k:var(--in)"><div class="mut">${tip(t('Último aporte'),t('Monto de tu aporte más reciente.'))}</div><div class="v">${last?money(last.amount2??last.amount,last.goal_cur||pc):'—'}</div></div><div class="card kpi" style="--k:var(--tr)"><div class="mut">${tip(t('Meta en'),t('Semanas estimadas para llegar al objetivo al ritmo actual.'))}</div><div class="v">${s.eta?t('{0} semanas',s.eta):'—'}</div></div></div>
-<div class="row"><button class="l lk" onclick="goalForm(S.goals.find(g=>g.id==${g.id}))">✎ ${t('Editar caja')}</button><button class="l" onclick="delGoal(${g.id})">${t('Eliminar caja')}</button></div></div>
+<div class="row"><button class="l lk" onclick="goalForm(S.goals.find(g=>g.id==${g.id}))">✎ ${t('Editar caja')}</button><button class="l lk" onclick="corrG(${g.id})">${t('Corregir saldo')}</button><button class="l" onclick="delGoal(${g.id})">${t('Eliminar caja')}</button></div></div>
 <div><h2>${t('Movimientos de la caja')}</h2><div class="card">${s.A.map(mvRow).join('')||empty('🐷',t('Sin aportes todavía.'))}</div></div></div>`}
+function corrG(id){const g=S.goals.find(g=>g.id==id),cs=gcs(g),B=gbal(g);
+const f=sheet(`<h2>${t('Corregir saldo de {0}',esc(g.name))}</h2><p class="mut">${t('Poné cuánto hay realmente en la caja y se registra la diferencia, sin contar como aporte ni retiro.')}</p>
+${cs.length>1?`<label>${t('Moneda')}</label><select name="c">${cs.map(c=>`<option value="${c}">${CUR(c).code} (${money(B[c]||0,c)})</option>`).join('')}</select>`:`<input type="hidden" name="c" value="${cs[0]}">`}
+<label>${t('Saldo real')}</label>${mi('v',Math.round((B[cs[0]]||0)*100)/100,{sym:CUR(cs[0]).symbol+(CUR(cs[0]).symbol.length>1?' ':''),req:1})}`,async b=>{const c=+b.c,d=Math.round((+b.v-(B[c]||0))*100)/100;if(!d){toast(t('El saldo ya coincide.'));return}
+await api('movements','POST',{type:'ajuste',amount:d,date:today(),goal_id:id,goal_cur:c,detail:t('Corrección de saldo')});load()});
+f.elements.c.onchange=e=>{const c=+e.target.value,el=f.elements.v;setSym(el,c);setM(el,Math.round((B[c]||0)*100)/100)}}
 async function delGoal(id){if(await ask(t('¿Eliminar esta caja?'),t('Eliminar caja'),'🐷'))try{await api('goals/'+id,'DELETE');S.goal=null;load()}catch(e){toast(e.message)}}
 
 // Campos de monto con formato mientras se escribe ($100.000,50 en español, $100,000.50 en inglés).
@@ -276,6 +282,7 @@ else if(T=='transferencia'){o.wallet_id=+b.wallet_id;o.to_wallet_id=+b.to_wallet
 else if(T=='ahorro'){o.wallet_id=+b.wallet_id;o.goal_id=+b.goal_id;o.goal_cur=+b.goal_cur||null;o.amount2=a2}
 else if(T=='retiro'){o.type='ahorro';o.wallet_id=+b.wallet_id;o.goal_id=+b.goal_id;o.goal_cur=+b.goal_cur||null;const x=-Math.abs(o.amount);if(a2!=null){o.amount=-Math.abs(a2);o.amount2=x}else o.amount=x}
 else if(T=='cambio'){o.goal_id=+b.goal_id;o.goal_cur=+b.goal_cur;o.goal_cur2=+b.goal_cur2;o.amount2=a2}
+else if(T=='ajuste'&&b.goal_id){o.goal_id=+b.goal_id;o.goal_cur=+b.goal_cur||G().currency_id}
 else o.wallet_id=+b.wallet_id;
 if(o.wallet_id)LWV=o.wallet_id;await api(mv?'movements/'+mv.id:'movements',mv?'PUT':'POST',o);load()});
 const x=f.querySelector('#x'),E=f.elements,G=()=>S.goals.find(g=>g.id==(E.goal_id?+E.goal_id.value:gid));
@@ -285,7 +292,7 @@ if(T=='transferencia')return[wcur(E.wallet_id.value),wcur(E.to_wallet_id.value)]
 if(T=='ahorro')return g?[wcur(E.wallet_id.value),gc()]:null;if(T=='retiro')return g?[gc(),wcur(E.wallet_id.value)]:null;
 if(T=='cambio')return E.goal_cur&&E.goal_cur2?[+E.goal_cur.value,+E.goal_cur2.value]:null;if(T=='egreso'&&E.src.value[0]=='g')return null;return null};
 const upFx=()=>{const s=sides(),w=f.querySelector('#fxw'),al=f.querySelector('#al');let h='';
-const eg=T=='egreso'&&E.src&&E.src.value[0]=='g'?S.goals.find(g=>g.id==+E.src.value.slice(1)):null,ca=s?s[0]:eg?(E.goal_cur?+E.goal_cur.value:eg.currency_id):T=='egreso'&&E.src?wcur(E.src.value):E.wallet_id?wcur(E.wallet_id.value):BASE().id;
+const eg=T=='egreso'&&E.src&&E.src.value[0]=='g'?S.goals.find(g=>g.id==+E.src.value.slice(1)):null,ca=s?s[0]:T=='ajuste'&&E.goal_id?(E.goal_cur?+E.goal_cur.value:G().currency_id):eg?(E.goal_cur?+E.goal_cur.value:eg.currency_id):T=='egreso'&&E.src?wcur(E.src.value):E.wallet_id?wcur(E.wallet_id.value):BASE().id;
 al.textContent=t('Monto')+(T=='retiro'?' ('+t('sale de la caja')+')':'')+' · '+CUR(ca).code;setSym(E.amount,ca);
 if(s&&s[0]!=s[1]){const g=G();if(g&&(T=='ahorro'||T=='retiro'))h+=`<div class="warn">⚠️ ${T=='ahorro'?t('Estás cargando la caja {0} en {1} con una billetera en {2}.',esc(g.name),CUR(s[1]).code,CUR(s[0]).code):t('Estás sacando {0} de la caja {1} hacia una billetera en {2}.',CUR(s[0]).code,esc(g.name),CUR(s[1]).code)} ${t('Lo ideal es primero pasar la plata a una billetera en la misma moneda (con un Pase) y desde ahí aportar o retirar. Si seguís igual, indicá a qué tipo de cambio hiciste la conversión.')}</div>`;
 const keep=mv&&mv.amount2!=null?Math.abs(ret?mv.amount:mv.amount2):null;h+=fxHtml(s[0],s[1],+pmEl(E.amount),keep)}
@@ -297,6 +304,7 @@ x.innerHTML=T=='transferencia'?WS('wallet_id',t('Desde'),wv)+WS('to_wallet_id',t
 :T=='cambio'?CJ(t('Caja'))+GC('goal_cur',t('De'),g,mv?mv.goal_cur:g&&g.currency_id)+GC('goal_cur2',t('A'),g,mv?mv.goal_cur2:gcs(g||{}).find(c=>c!=g.currency_id))
 :T=='egreso'?`<label>${t('Se paga con')}</label>${csel('src',vis.map(w=>({v:w.id,h:`<i class="cdot" style="background:${w.color}"></i><span class="cic">${icoH(w.icon)}</span>${esc(w.name)}${multi()?` <span class="mut">${CUR(w.currency_id).code}</span>`:''}`})).concat(S.goals.map(g=>({v:'g'+g.id,h:`<i class="cdot" style="background:var(--sv)"></i><span class="cic">🐷</span>${esc(g.name)}`}))),mv&&mv.goal_id?'g'+mv.goal_id:wv,t('Elegí con qué pagás'))}<div id="egc"></div>
 <label>${t('Categoría')}</label>${csel('category',catOpts('egreso',mv&&mv.type=='egreso'&&mv.category),mv?mv.category:'',t('Elegí una categoría'),t('No tenés categorías de gasto. Creálas en Menú → Categorías.'))}<label>${t('Prioridad')}</label>${csel('importance',(S.priorities||[]).map(p=>({v:p.name,h:`<i class="cdot" style="background:${p.color}"></i><span class="cic">${icoH(p.icon)}</span>${esc(t(p.name))}`})).concat(mv&&mv.importance&&!PRX(mv.importance)?[{v:mv.importance,h:esc(t(mv.importance))}]:[]),mv?mv.importance:'',t('Elegí una prioridad'),t('No tenés prioridades. Creálas en Menú → Prioridades.'))}`
+:T=='ajuste'&&gid?CJ(t('Caja'))+GC('goal_cur',t('Moneda en la caja'),g,mv?mv.goal_cur:g&&g.currency_id)+`<p class="mut">${t('Corrección de saldo de la caja: suma (o resta, con monto negativo) sin contar como aporte ni retiro.')}</p>`
 :T=='ajuste'?WS('wallet_id',t('Billetera'),wv)+`<p class="mut">${t('Corrección de saldo: suma (o resta, con monto negativo) a la billetera sin contar como ingreso ni gasto.')}</p>`
 :WS('wallet_id',t('Billetera'),wv)+`<label>${t('Categoría')}</label>${csel('category',catOpts('ingreso',mv&&mv.type=='ingreso'&&mv.category),mv?mv.category:'',t('Elegí una categoría'),t('No tenés categorías de ingreso. Creálas en Menú → Categorías.'))}`;egc();upFx()};
 // Gasto pagado con una caja de varias monedas: elegir de qué moneda sale
@@ -419,9 +427,12 @@ function config(){const s=S.settings,th=s.theme||'crema',lg=s.lang||'es',m=MODE(
 return`<div class="narrow"><h1>⚙️ ${t('Configuración')}</h1>
 <h2>${t('Idioma')}</h2><div class="card"><div class="seg">${[['es','🇦🇷 Español'],['en','🇺🇸 English']].map(([k,n])=>`<button type="button" class="${lg==k?'on':''}" onclick="setS('lang','${k}')">${n}</button>`).join('')}</div></div>
 <h2>${t('Tema')}</h2><div class="themes">${THEMES.map(([k,n,c])=>`<button type="button" class="th ${th==k?'on':''}" onclick="setS('theme','${k}')"><div class="sw">${c.map(x=>`<i style="background:${x}"></i>`).join('')}</div><b>${t(n)}</b>${th==k?' ✓':''}</button>`).join('')}</div>
-<h2>${t('Cómo ver los totales')}</h2><div class="card"><div class="seg">${[['ambos','Ambos'],['separado','Separado por moneda'],['una','Todo en una moneda']].map(([k,n])=>`<button type="button" class="${m==k?'on':''}" onclick="setS('totals','${k}')">${t(n)}</button>`).join('')}</div>
+<h2>${t('Cómo ver los totales')}</h2><div class="card" id="cfgtot"><div class="seg">${[['ambos','Ambos'],['separado','Separado por moneda'],['una','Todo en una moneda']].map(([k,n])=>`<button type="button" class="${m==k?'on':''}" onclick="setS('totals','${k}')">${t(n)}</button>`).join('')}</div>
 <p class="mut">${m=='ambos'?t('Un total convertido a la moneda elegida y, debajo, el detalle por moneda.'):m=='separado'?t('Un total por cada moneda, sin convertir.'):t('Todo convertido a la moneda elegida con tus cotizaciones.')}</p>
 ${m!='separado'?`<label>${t('Moneda para los totales')}</label><select onchange="setS('tcur',+this.value)">${S.currencies.map(c=>`<option value="${c.id}" ${c.id==TCUR()?'selected':''}>${c.code} · ${esc(c.name)}</option>`).join('')}</select>`:''}</div>
+<h2>${t('Tutorial')}</h2><div class="card" id="cfgtut"><button class="p ghost" onclick="restartTour()">🧭 ${t('Reiniciar tutorial de inicio')}</button>
+<p class="mut">${t('Vuelve a preguntarte tus saldos y te muestra la app paso a paso. Cada sección tiene además su botón ? con una visita guiada.')}</p>
+<label class="ck" style="margin-top:10px"><input type="checkbox" ${s.pasos=='on'?'checked':''} onchange="setS('pasos',this.checked?'on':'off')"> ${t('Mostrar “Primeros pasos” en el Resumen')}</label></div>
 <p class="mut">${t('Se guarda en tu cuenta: vas a ver lo mismo en el celular y en la computadora.')}</p></div>`}
 
 // Cuenta
