@@ -76,7 +76,7 @@ seed(r.lastInsertRowid,{cur:1,wal:1});seed(r.lastInsertRowid,{cat:1,pri:1});db.p
 app.post('/api/login',limit,(req,res)=>{const u=db.prepare('SELECT * FROM users WHERE username=?').get(String(req.body.username||'').toLowerCase());
 if(!u||!bcrypt.compareSync(String(req.body.password||''),u.hash))return err(res,401,'Usuario o contraseña incorrectos');login(res,u)});
 app.post('/api/logout',(q,res)=>res.clearCookie('tk').json({}));
-app.use('/api',(req,res,next)=>{try{const p=jwt.verify(req.cookies.tk,SECRET);req.uid=p.uid;next()}catch{err(res,401,'No autenticado')}});
+app.use('/api',(req,res,next)=>{try{const p=jwt.verify(req.cookies.tk,SECRET);if(!db.prepare('SELECT 1 FROM users WHERE id=?').get(p.uid))throw 0;req.uid=p.uid;next()}catch{err(res,401,'No autenticado')}});
 app.get('/api/me',(req,res)=>res.json(db.prepare('SELECT username FROM users WHERE id=?').get(req.uid)));
 app.put('/api/settings',(req,res)=>{const s=getSet(req.uid);for(const[k,v]of Object.entries(req.body||{}))if(SET[k]&&SET[k].includes(v))s[k]=v;
 // pv: pasos de "Primeros pasos" que no se deducen de los datos (secciones visitadas, visita guiada hecha)
@@ -101,6 +101,10 @@ if(w.has('categorias')){q('DELETE FROM categories WHERE user_id=?');seed(u.id,{c
 if(w.has('prioridades')){q('DELETE FROM priorities WHERE user_id=?');seed(u.id,{pri:1})}
 if(w.has('configuracion'))q("UPDATE users SET settings='{}' WHERE id=?");
 db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');return err(res,500,'No se pudo formatear')}res.json({})});
+// Eliminar la cuenta por completo: borra todos sus datos y el usuario, y cierra la sesión
+app.post('/api/account/delete',limit,(req,res)=>{const u=checkPw(req,res);if(!u)return;db.exec('BEGIN');try{
+for(const t of['movements','plans','goals','wallets','categories','priorities','currencies'])db.prepare(`DELETE FROM ${t} WHERE user_id=?`).run(u.id);
+db.prepare('DELETE FROM users WHERE id=?').run(u.id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');return err(res,500,'No se pudo eliminar la cuenta')}res.clearCookie('tk').json({})});
 app.get('/api/data',(req,res)=>{const u=req.uid,all=t=>db.prepare(`SELECT * FROM ${t} WHERE user_id=?`).all(u);res.json({username:db.prepare('SELECT username FROM users WHERE id=?').get(u).username,settings:getSet(u),
 movs:db.prepare('SELECT * FROM movements WHERE user_id=? ORDER BY date DESC,id DESC').all(u),goals:all('goals'),plans:all('plans'),currencies:db.prepare('SELECT * FROM currencies WHERE user_id=? ORDER BY base DESC,code').all(u),
 wallets:db.prepare('SELECT * FROM wallets WHERE user_id=? ORDER BY archived,sort,id').all(u),categories:db.prepare('SELECT * FROM categories WHERE user_id=? ORDER BY kind,name').all(u),priorities:db.prepare('SELECT * FROM priorities WHERE user_id=? ORDER BY sort,id').all(u)})});

@@ -352,4 +352,11 @@ const EN={
 "Revisá tus categorías":"Review your categories",
 "Probá una visita guiada (botón ?)":"Try a guided tour (? button)",
 "Sí":"Yes",
-"No":"No"};
+"No":"No","Eliminar cuenta":"Delete account",
+"Borra tu usuario y todos tus datos para siempre. No se puede recuperar.":"Deletes your user and all your data forever. It can't be recovered.",
+"Eliminar cuenta…":"Delete account…",
+"Se borran tu usuario {0} y todos tus datos: movimientos, billeteras, cajas, cuotas, categorías y configuración.":"Your user {0} and all your data will be deleted: entries, wallets, boxes, installments, categories and settings.",
+"Esto no se puede deshacer. Si querés empezar de cero pero seguir usando la app, usá “Formatear cuenta”.":"This can't be undone. If you want to start over but keep using the app, use “Wipe account”.",
+"Tu cuenta fue eliminada":"Your account was deleted",
+"Eliminar cuenta para siempre":"Delete account forever",
+"No se pudo eliminar la cuenta":"Couldn't delete the account"};

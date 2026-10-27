@@ -444,12 +444,21 @@ function cuenta(){return`<div class="narrow"><h1>👤 ${t('Cuenta')}</h1>
 <h2>${t('Cambiar contraseña')}</h2><form class="card" onsubmit="acc(event)"><label>${t('Contraseña actual')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div>
 <label>${t('Contraseña nueva')}</label><div class="pw"><input name="new_password" type="password" required minlength="8" autocomplete="new-password">${EYE()}</div><label>${t('Repetí la contraseña nueva')}</label><div class="pw"><input name="rep" type="password" required minlength="8" autocomplete="new-password">${EYE()}</div>
 <p class="err"></p><button class="p">${t('Guardar contraseña')}</button></form>
-<h2 class="out">${t('Zona de peligro')}</h2><div class="card" style="border-color:color-mix(in srgb,var(--out) 45%,transparent)"><b>🧨 ${t('Formatear cuenta')}</b><p class="mut">${t('Borra los datos que elijas para empezar de cero. No se puede deshacer desde la app.')}</p><button class="p danger" onclick="openReset()">${t('Formatear cuenta…')}</button></div>
+<h2 class="out">${t('Zona de peligro')}</h2><div class="card" style="border-color:color-mix(in srgb,var(--out) 45%,transparent)"><b>🧨 ${t('Formatear cuenta')}</b><p class="mut">${t('Borra los datos que elijas para empezar de cero. No se puede deshacer desde la app.')}</p><button class="p danger" onclick="openReset()">${t('Formatear cuenta…')}</button>
+<hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><b>🗑️ ${t('Eliminar cuenta')}</b><p class="mut">${t('Borra tu usuario y todos tus datos para siempre. No se puede recuperar.')}</p><button class="p danger" onclick="openDelAcc()">${t('Eliminar cuenta…')}</button></div>
 <button class="p ghost" style="margin-top:14px" onclick="logout()">🚪 ${t('Cerrar sesión')}</button></div>`}
 async function acc(e){e.preventDefault();const f=e.target,b=Object.fromEntries(new FormData(f)),m=f.querySelector('.err');
 if(b.rep!==undefined&&b.new_password!==b.rep){m.textContent=t('Las contraseñas nuevas no coinciden');return}delete b.rep;
 try{const r=await api('account','PUT',b);S.username=r.username;render(1);toast(b.new_password?t('Contraseña actualizada'):t('Usuario actualizado'))}catch(x){m.textContent=x.message}}
-function openReset(){const w=WORDS[Math.floor(Math.random()*WORDS.length)]+'-'+(10+Math.floor(Math.random()*90));
+const vword=()=>WORDS[Math.floor(Math.random()*WORDS.length)]+'-'+(10+Math.floor(Math.random()*90));
+function openDelAcc(){const w=vword();
+sheet(`<h2 class="out">⚠️ ${t('Eliminar cuenta')}</h2><p>${t('Se borran tu usuario {0} y todos tus datos: movimientos, billeteras, cajas, cuotas, categorías y configuración.',`<b>${esc(S.username)}</b>`)}</p>
+<div class="warn">${t('Esto no se puede deshacer. Si querés empezar de cero pero seguir usando la app, usá “Formatear cuenta”.')}</div>
+<label>${t('Para confirmar, escribí esta palabra:')}</label><div class="word">${w}</div><input name="word" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+<label>${t('Tu contraseña')}</label><div class="pw"><input name="password" type="password" required autocomplete="current-password">${EYE()}</div>`,
+async b=>{if(b.word.trim().toLowerCase()!==w)throw new Error(t('La palabra no coincide'));await api('account/delete','POST',{password:b.password});
+menu(0);tourEnd(1);TB=false;Object.assign(S,{movs:[],goals:[],plans:[],view:'res',goal:null,username:'',settings:{}});loginView();toast(t('Tu cuenta fue eliminada'))},{submit:t('Eliminar cuenta para siempre'),danger:1})}
+function openReset(){const w=vword();
 const f=sheet(`<h2 class="out">⚠️ ${t('Formatear cuenta')}</h2><p>${t('Elegí qué querés borrar:')}</p>
 ${[['movimientos','Movimientos (ingresos, gastos, pases y correcciones)'],['cajas','Cajas de ahorro (con sus aportes y retiros)'],['cuotas','Planes de cuotas'],['billeteras','Billeteras y monedas (vuelven a Efectivo y Virtual en pesos; borra también movimientos, cajas y cuotas)'],['categorias','Categorías (vuelven a las de fábrica)'],['prioridades','Prioridades (vuelven a Necesario, Útil y Gusto)'],['configuracion','Configuración (idioma, tema y totales)']].map(([k,n])=>`<label class="ck" style="margin:8px 0"><input type="checkbox" name="w_${k}"> ${t(n)}</label>`).join('')}
 <div class="warn">${t('Si borrás los movimientos pero no los planes de cuotas, las cuotas ya vencidas se vuelven a cargar solas.')}</div>
